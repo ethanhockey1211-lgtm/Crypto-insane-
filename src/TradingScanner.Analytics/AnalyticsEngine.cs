@@ -26,6 +26,11 @@ public sealed class AnalyticsEngine : IMarketEventObserver, IAnalyticsReader
         _logger = logger;
     }
 
+    /// <summary>Raised on the engine thread after a symbol's snapshot changes. Downstream engines (signals) chain on this so ordering is explicit.</summary>
+    public event Action<AnalyticsSnapshot, Candle?>? SnapshotUpdated;
+    /// <summary>Raised before a symbol's history replay so chained engines can discard their state.</summary>
+    public event Action<Symbol>? RebuildStarting;
+
     public IReadOnlyCollection<Symbol> Symbols => _snapshots.Keys.ToArray();
     public AnalyticsSnapshot? GetSnapshot(Symbol symbol) => _snapshots.GetValueOrDefault(symbol);
     public AnalyticsProjection? Project(Symbol symbol, double price, DateTimeOffset now) => _snapshots.GetValueOrDefault(symbol)?.Project(price, now);
@@ -34,15 +39,21 @@ public sealed class AnalyticsEngine : IMarketEventObserver, IAnalyticsReader
     {
         var s = _state.GetOrAdd(candle.Symbol, static (sym, o) => new SymbolAnalytics(sym, o), _options);
         s.Update(candle);
-        _snapshots[candle.Symbol] = s.Snapshot();
+        var snap = s.Snapshot();
+        _snapshots[candle.Symbol] = snap;
+        SnapshotUpdated?.Invoke(snap, candle);
     }
 
     public void OnHistoryApplied(Symbol symbol)
     {
         var s = _state.GetOrAdd(symbol, static (sym, o) => new SymbolAnalytics(sym, o), _options);
-        s.Rebuild(_candles);
-        _snapshots[symbol] = s.Snapshot();
+        RebuildStarting?.Invoke(symbol);
+        var handlers = SnapshotUpdated;
+        s.Rebuild(_candles, handlers is null ? null : (snap, bar) => handlers(snap, bar));
+        var final = s.Snapshot();
+        _snapshots[symbol] = final;
         _logger.LogDebug("Analytics rebuilt for {Symbol}", symbol);
+        SnapshotUpdated?.Invoke(final, null);
     }
 
     public void OnQuote(PriceQuote quote) { }

@@ -68,7 +68,13 @@ public sealed record MomentumProjection(
 public sealed record VwapProjection(DateTimeOffset SessionStart, double Vwap, double Std, int Bars, double DeviationPct, double? Sigma, bool Above);
 
 /// <summary>Immutable per-symbol analytics as of the last closed bars. Safe to read from any thread.</summary>
-public sealed record AnalyticsSnapshot(Symbol Symbol, DateTimeOffset AsOf, IReadOnlyList<IndicatorValues> Timeframes, VwapValues? Vwap, MomentumValues? Momentum)
+public sealed record AnalyticsSnapshot(
+    Symbol Symbol,
+    DateTimeOffset AsOf,
+    IReadOnlyList<IndicatorValues> Timeframes,
+    VwapValues? Vwap,
+    MomentumValues? Momentum,
+    IReadOnlyList<Structure.StructureSnapshot> Structure)
 {
     public IndicatorValues? For(Timeframe tf)
     {
@@ -76,11 +82,18 @@ public sealed record AnalyticsSnapshot(Symbol Symbol, DateTimeOffset AsOf, IRead
         return null;
     }
 
+    public Structure.StructureSnapshot? StructureFor(Timeframe tf)
+    {
+        foreach (var s in Structure) if (s.Timeframe == tf) return s;
+        return null;
+    }
+
     /// <summary>Pure projection of live-price dependent values (momentum, VWAP deviation) at <paramref name="price"/>.</summary>
     public AnalyticsProjection Project(double price, DateTimeOffset now) => new(
         Symbol, AsOf, now, price, Timeframes,
         Vwap is { } v ? new VwapProjection(v.SessionStart, v.Vwap, v.Std, v.Bars, v.DeviationPct(price), v.Sigma(price), price > v.Vwap) : null,
-        Momentum?.Project(price));
+        Momentum?.Project(price),
+        Structure);
 }
 
 public sealed record AnalyticsProjection(
@@ -90,7 +103,8 @@ public sealed record AnalyticsProjection(
     double Price,
     IReadOnlyList<IndicatorValues> Timeframes,
     VwapProjection? Vwap,
-    MomentumProjection? Momentum)
+    MomentumProjection? Momentum,
+    IReadOnlyList<Structure.StructureSnapshot> Structure)
 {
     public IndicatorValues? For(Timeframe tf)
     {

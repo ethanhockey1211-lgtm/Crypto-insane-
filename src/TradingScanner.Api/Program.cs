@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 using TradingScanner.Analytics;
 using TradingScanner.Core.Providers;
 using TradingScanner.MarketData;
+using TradingScanner.Signals;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +21,7 @@ if (!builder.Environment.IsDevelopment())
 
 builder.Services.AddMarketData(builder.Configuration);
 builder.Services.AddAnalytics(builder.Configuration);
+builder.Services.AddSignals(builder.Configuration);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddSingleton<MarketBroadcaster>();
@@ -44,6 +46,7 @@ builder.Services.AddHealthChecks()
     .AddCheck<FeedHealthCheck>("feed", tags: ["ready"]);
 
 var app = builder.Build();
+app.Services.GetRequiredService<SignalsEngine>(); // subscribe to analytics before the first bar closes
 
 app.UseCors();
 app.UseRateLimiter();

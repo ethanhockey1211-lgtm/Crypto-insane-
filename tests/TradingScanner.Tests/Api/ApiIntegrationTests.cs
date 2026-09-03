@@ -155,6 +155,20 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
 
         var missing = await client.GetAsync("/api/market/XRP-USD/analytics");
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+
+        // Breakout state needs closed 5m bars. Depending on the wall clock the three fake 1m bars may or may not have
+        // closed one, so either there is nothing yet (404) or an analysis with no levels; never an invented setup.
+        var breakouts = await client.GetAsync("/api/market/BTC-USD/breakouts");
+        if (breakouts.StatusCode == HttpStatusCode.OK)
+        {
+            using var b = JsonDocument.Parse(await breakouts.Content.ReadAsStringAsync());
+            Assert.Equal(0, b.RootElement.GetProperty("levels").GetArrayLength());
+            Assert.Equal(JsonValueKind.Null, b.RootElement.GetProperty("bestUp").ValueKind);
+        }
+        else
+        {
+            Assert.Equal(HttpStatusCode.NotFound, breakouts.StatusCode);
+        }
     }
 
     [Fact]

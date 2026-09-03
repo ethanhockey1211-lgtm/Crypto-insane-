@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\TradingScanner.MarketData\TradingScanner.MarketData.csproj" />
     <ProjectReference Include="..\..\src\TradingScanner.Api\TradingScanner.Api.csproj" />
     <ProjectReference Include="..\..\src\TradingScanner.Analytics\TradingScanner.Analytics.csproj" />
+    <ProjectReference Include="..\..\src\TradingScanner.Signals\TradingScanner.Signals.csproj" />
   </ItemGroup>
 
 </Project>

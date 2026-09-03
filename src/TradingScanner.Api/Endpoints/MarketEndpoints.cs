@@ -3,6 +3,8 @@ using Microsoft.Extensions.Options;
 using TradingScanner.Api.Contracts;
 using TradingScanner.Api.Services;
 using TradingScanner.Analytics;
+using TradingScanner.Signals;
+using TradingScanner.Signals.Breakouts;
 using TradingScanner.Core;
 using TradingScanner.Core.Market;
 using TradingScanner.MarketData.Engine;
@@ -55,6 +57,13 @@ public static class MarketEndpoints
             var quote = reader.GetQuote(sym);
             var price = quote is not null ? (double)quote.Price : snapshot.Momentum?.LastClose ?? snapshot.Timeframes.FirstOrDefault()?.Close ?? 0d;
             return TypedResults.Ok(snapshot.Project(price, time.GetUtcNow()));
+        });
+
+        market.MapGet("/{symbol}/breakouts", Results<Ok<BreakoutAnalysis>, NotFound> (string symbol, ISignalsReader signals) =>
+        {
+            if (!TryParseSymbol(symbol, out var sym)) return TypedResults.NotFound();
+            var analysis = signals.GetBreakouts(sym);
+            return analysis is null ? TypedResults.NotFound() : TypedResults.Ok(analysis);
         });
 
         var system = app.MapGroup("/api/system").RequireRateLimiting("api");

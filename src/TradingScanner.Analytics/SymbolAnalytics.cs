@@ -1,4 +1,5 @@
 using TradingScanner.Analytics.Indicators;
+using TradingScanner.Analytics.Structure;
 using TradingScanner.Core.Market;
 
 namespace TradingScanner.Analytics;
@@ -11,6 +12,7 @@ public sealed class SymbolAnalytics
 {
     private static readonly Timeframe[] Timeframes = TimeframeExtensions.All;
     private readonly TimeframeIndicators[] _tf;
+    private readonly MarketStructureAnalyzer?[] _structure;
     private readonly SessionVwap _vwap = new();
     private readonly MomentumTracker _momentum = new();
     private DateTimeOffset _asOf;
@@ -21,13 +23,17 @@ public sealed class SymbolAnalytics
     {
         Symbol = symbol;
         _tf = Timeframes.Select(t => new TimeframeIndicators(t, options)).ToArray();
+        _structure = Timeframes.Select(t => options.Structure.Timeframes.Contains(t) ? new MarketStructureAnalyzer(t, options.Structure) : null).ToArray();
     }
 
     public TimeframeIndicators Indicators(Timeframe tf) => _tf[Array.IndexOf(Timeframes, tf)];
+    public MarketStructureAnalyzer? Structure(Timeframe tf) => _structure[Array.IndexOf(Timeframes, tf)];
 
     public void Update(in Candle c)
     {
-        Indicators(c.Timeframe).Update(c);
+        var i = Array.IndexOf(Timeframes, c.Timeframe);
+        _tf[i].Update(c);
+        _structure[i]?.Update(c, _tf[i].Last?.Atr);
         if (c.Timeframe == Timeframe.M1)
         {
             _vwap.Update(c);
@@ -36,18 +42,35 @@ public sealed class SymbolAnalytics
         if (c.CloseTime > _asOf) _asOf = c.CloseTime;
     }
 
-    /// <summary>Discard state and replay every timeframe's closed candles from the reader (after a history merge).</summary>
-    public void Rebuild(ICandleHistoryReader reader)
+    /// <summary>
+    /// Discard state and replay every timeframe's closed candles from the reader in chronological close order
+    /// (after a history merge). <paramref name="onBar"/> receives the snapshot after each bar so downstream
+    /// state machines can replay through exactly the live code path.
+    /// </summary>
+    public void Rebuild(ICandleHistoryReader reader, Action<AnalyticsSnapshot, Candle>? onBar = null)
     {
         foreach (var t in _tf) t.Reset();
+        foreach (var st in _structure) st?.Reset();
         _vwap.Reset();
         _momentum.Reset();
         _asOf = default;
+
+        var all = new List<Candle>();
         foreach (var tf in Timeframes)
         {
             var snap = reader.GetCandles(Symbol, tf);
-            if (snap is null) continue;
-            foreach (var c in snap.Closed) Update(c);
+            if (snap is not null) all.AddRange(snap.Closed);
+        }
+        // Lower timeframes first at equal close times so a 5m bar sees its own last 1m bar already applied.
+        all.Sort(static (a, b) =>
+        {
+            var byClose = a.CloseTime.CompareTo(b.CloseTime);
+            return byClose != 0 ? byClose : a.Timeframe.CompareTo(b.Timeframe);
+        });
+        foreach (var c in all)
+        {
+            Update(c);
+            onBar?.Invoke(Snapshot(), c);
         }
     }
 
@@ -71,6 +94,9 @@ public sealed class SymbolAnalytics
             momentum = new MomentumValues(_momentum.CloseAgo(0)!.Value, refs, prev);
         }
 
-        return new AnalyticsSnapshot(Symbol, _asOf, values, vwap, momentum);
+        var structure = new List<StructureSnapshot>(3);
+        foreach (var st in _structure) if (st?.Last is { } ss) structure.Add(ss);
+
+        return new AnalyticsSnapshot(Symbol, _asOf, values, vwap, momentum, structure);
     }
 }
