@@ -168,3 +168,12 @@ export interface PaperPositionView { position: PaperPosition; lastPrice: number 
 export interface PaperBucket { key: string; trades: number; winRate: number; totalPnl: number; avgR: number | null }
 export interface PaperStats { trades: number; wins: number; winRate: number; totalPnl: number; grossProfit: number; grossLoss: number; profitFactor: number | null; avgPnl: number; avgR: number | null; expectancy: number | null; bySetup: PaperBucket[]; byRegime: PaperBucket[] }
 export interface PlaceOrderRequest { symbol: string; side: "Buy" | "Sell"; quantity: number | null; notional: number | null; stopPrice: number | null; takeProfitPrice: number | null; note: string | null }
+
+export interface PerformanceBucket {
+  key: string; signals: number; completed: number; withPlan: number; targetBeforeStopRate: number | null; stopRate: number | null;
+  avgR: number | null; expectancy: number | null; profitFactor: number | null; avgRet5m: number | null; avgRet15m: number | null; avgRet30m: number | null; avgRet1h: number | null; avgMfe: number | null; avgMae: number | null;
+}
+export interface PerformanceReport { at: string; overall: PerformanceBucket; byScoreBucket: PerformanceBucket[]; bySetup: PerformanceBucket[]; byRegime: PerformanceBucket[]; bySymbol: PerformanceBucket[]; byConfidence: PerformanceBucket[]; configVersion: number; note: string }
+export interface SignalRecord { id: string; symbol: string; at: string; setup: string; confidence: string; score: number; price: number; entry: number | null; stop: number | null; target1: number | null; rewardRatio1: number | null; regime: string; btcTrend: string | null; doNotChase: boolean; configVersion: number }
+export interface SignalOutcome { ret5m: number | null; ret15m: number | null; ret30m: number | null; ret1h: number | null; mfe: number; mae: number; stopHit: boolean | null; target1Hit: boolean | null; firstEvent: string; r: number | null; lastPrice: string; complete: boolean }
+export interface SignalWithOutcome { signal: SignalRecord; outcome: SignalOutcome }

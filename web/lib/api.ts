@@ -1,4 +1,4 @@
-import type { AlertEvent, AlertFieldInfo, AlertRule, AlertRuleRequest, CandlesResponse, FeedStatus, Opportunity, PaperAccount, PaperAccountView, PaperOrder, PaperPosition, PaperPositionView, PaperStats, PlaceOrderRequest, ScannerStream, TapeEvent } from "./types";
+import type { AlertEvent, AlertFieldInfo, AlertRule, AlertRuleRequest, CandlesResponse, FeedStatus, Opportunity, PaperAccount, PaperAccountView, PaperOrder, PaperPosition, PaperPositionView, PaperStats, PerformanceReport, PlaceOrderRequest, ScannerStream, SignalWithOutcome, TapeEvent } from "./types";
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5080").replace(/\/$/, "");
 
@@ -41,5 +41,9 @@ export const api = {
     positions: () => get<PaperPositionView[]>("/api/paper/positions"),
     trades: () => get<PaperPosition[]>("/api/paper/trades"),
     stats: () => get<PaperStats>("/api/paper/stats"),
+  },
+  performance: {
+    report: () => get<PerformanceReport>("/api/performance"),
+    signals: (limit = 100, symbol?: string) => get<SignalWithOutcome[]>(`/api/performance/signals?limit=${limit}${symbol ? `&symbol=${encodeURIComponent(symbol)}` : ""}`),
   },
 };
