@@ -25,13 +25,26 @@ public sealed record ScannerRowDto(
     bool DoNotChase,
     bool Stale,
     double? VwapDev,
-    double? Volume24h)
+    double? Volume24h,
+    double? KeyLevel,
+    string? Trend,
+    /// <summary>Component points in fixed order: momentum, volume, structure, breakout, market, liquidity, risk/reward.</summary>
+    double[] Components,
+    double Penalty)
 {
-    public static ScannerRowDto From(Opportunity o) => new(
-        o.Rank, o.Symbol.Value, o.Score, MarketTape.Label(o.Setup.Type), o.Setup.Confidence.ToString(), o.Price,
-        o.Plan?.EntryMid, o.Plan?.Stop, o.Plan?.Target1, o.Plan?.RewardRatio1,
-        o.Metrics.R1m, o.Metrics.R5m, o.Metrics.R15m, o.Metrics.R1h, o.Metrics.R24h, o.Metrics.RelVol5m,
-        o.Setup.Breakout?.State.ToString(), o.Overextension.DoNotChase, o.Quality.Stale, o.Metrics.VwapDeviationPct, o.Metrics.Volume24hQuote);
+    private static readonly string[] ComponentOrder = [OpportunityScorer.Momentum, OpportunityScorer.Volume, OpportunityScorer.Structure, OpportunityScorer.Breakout, OpportunityScorer.Market, OpportunityScorer.Liquidity, OpportunityScorer.RiskReward];
+
+    public static ScannerRowDto From(Opportunity o)
+    {
+        var components = new double[ComponentOrder.Length];
+        for (var i = 0; i < components.Length; i++) components[i] = o.Breakdown.ComponentPoints(ComponentOrder[i]);
+        return new(
+            o.Rank, o.Symbol.Value, o.Score, MarketTape.Label(o.Setup.Type), o.Setup.Confidence.ToString(), o.Price,
+            o.Plan?.EntryMid, o.Plan?.Stop, o.Plan?.Target1, o.Plan?.RewardRatio1,
+            o.Metrics.R1m, o.Metrics.R5m, o.Metrics.R15m, o.Metrics.R1h, o.Metrics.R24h, o.Metrics.RelVol5m,
+            o.Setup.Breakout?.State.ToString(), o.Overextension.DoNotChase, o.Quality.Stale, o.Metrics.VwapDeviationPct, o.Metrics.Volume24hQuote,
+            o.Setup.KeyLevel, o.Metrics.Alignment5m, components, o.Breakdown.Penalties.Sum(p => p.Points));
+    }
 }
 
 public sealed record ScannerStreamDto(DateTimeOffset At, MarketContext Market, IReadOnlyList<ScannerRowDto> Rows, int Universe, double CycleMs);

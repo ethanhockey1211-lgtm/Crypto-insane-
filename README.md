@@ -15,7 +15,7 @@ Nothing here predicts prices. No setup is ever presented as certain. Real-money 
 | 2 | Analytics: EMA 9/20/50/200, Wilder RSI/ATR, session VWAP with deviation bands, relative volume, realized volatility, multi-horizon momentum with acceleration, EMA alignment/cross tracking; rebuild-from-history; `GET /api/market/{symbol}/analytics` | Implemented, tested |
 | 3 | Market structure on 5m/15m/1h: confirmed fractal swings, stable clustered levels, HH/HL/LH/LL/EH/EL trend labels, range and session extremes; per-level breakout state machine (Watching → Approaching → Attempt → Confirmed → Retesting → Retest Held / Failed / Extended) in ATR units with retest metrics and narratives; chronological history replay through the live path; `GET /api/market/{symbol}/breakouts` | Implemented, tested |
 | 4 | Scanner: BTC/ETH state, breadth and risk regime; anti-FOMO overextension assessment with DO NOT CHASE; setup classification (Breakout, Breakout+Retest, VWAP Reclaim, Support Bounce, Momentum Continuation, Range Breakout, Trend Pullback, Reversal, Volume/Volatility Expansion); configurable 0–100 score with evidence per component and penalty; trade plans with entry zone, trigger, invalidation, stop, three resistance-capped targets and R:R; why/invalidation/risk explanations; score-change reasons; BTC correlation; ranked universe every second over SignalR; market tape | Implemented, tested |
-| 5 | Dashboard (Next.js terminal UI) | Next |
+| 5 | Dashboard: Next.js 15 / React 19 / TypeScript / Tailwind 4 / Lightweight Charts 5. Market regime header, ranked scanner with per-row score ledger (component segments + penalty cut), setup drawer with chart and plan lines, plan / why / invalidation / risks, momentum, levels, score breakdown, position calculator, watchlist (browser-persisted), heatmap, market tape, LIVE DATA INTERRUPTED banner. Store lives outside React with per-symbol subscriptions and animation-frame batching | Implemented |
 | 6–10 | Alerts, paper trading, signal analytics, backtesting, AI explanation | Planned |
 
 ## Run the backend
@@ -61,6 +61,25 @@ trades stream. Expect roughly a minute for warm-up of 200 symbols at the default
 | `StaleQuoteThreshold` | 30s | Quotes older than this are flagged stale |
 | `ReceiveTimeout` | 15s | Silence that forces a reconnect (heartbeats arrive every second) |
 | `WarmUpHistory` | true | Load REST history at startup |
+
+## Run the dashboard
+
+Requires Node 22 and pnpm.
+
+```bash
+cd web
+cp .env.example .env.local        # NEXT_PUBLIC_API_URL, default http://localhost:5080
+pnpm install
+pnpm dev                          # http://localhost:3000
+pnpm test                         # position sizing + store batching tests
+```
+
+The UI takes its initial state from REST and then follows the SignalR hub. Whenever the hub or the exchange feed
+is not live, a `LIVE DATA INTERRUPTED` banner appears and rows dim; prices never pretend to move.
+
+`web/mock/server.mjs` is a development-only mock of the REST surface with fabricated, static data so the UI can be
+reviewed without an exchange connection (`node mock/server.mjs`). It reports its feed as not live on purpose. It is
+not used by the product.
 
 ## Data integrity rules implemented in Phase 1
 
