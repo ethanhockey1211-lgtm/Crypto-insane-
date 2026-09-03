@@ -53,6 +53,8 @@ public sealed class MarketStateEngine : BackgroundService, IMarketStateReader
     public IReadOnlyCollection<Symbol> Symbols => _symbols.Keys.ToArray();
     public SymbolState? Get(Symbol symbol) => _symbols.GetValueOrDefault(symbol);
     public PriceQuote? GetQuote(Symbol symbol) => _symbols.GetValueOrDefault(symbol)?.Quote;
+    public MarketStats? GetStats(Symbol symbol) => _symbols.GetValueOrDefault(symbol)?.Stats;
+    public bool IsHistoryLoaded(Symbol symbol) => _symbols.GetValueOrDefault(symbol)?.HistoryLoaded ?? false;
     public CandleSnapshot? GetCandles(Symbol symbol, Timeframe timeframe, int? lastN = null) => _symbols.GetValueOrDefault(symbol)?.Series(timeframe).Snapshot(lastN);
     public IReadOnlyDictionary<int, FeedStatusChange> ConnectionStatus => _connections;
     public DateTimeOffset? LastEventAt => _lastEventAt;

@@ -30,6 +30,9 @@ public sealed class MarketStructureAnalyzer
     private readonly List<LevelCluster> _levels = new();
     private readonly RollingWindow _highs;
     private readonly RollingWindow _lows;
+    private readonly RollingWindow _rsi = new(64);
+    private readonly List<Divergence> _divergences = new();
+    private const double RsiDivergenceMargin = 1.0;
     private long _barIndex = -1;
     private DateTimeOffset? _session;
     private double _sessionHigh = double.NaN, _sessionLow = double.NaN;
@@ -48,7 +51,9 @@ public sealed class MarketStructureAnalyzer
     public StructureSnapshot? Last => _last;
     public IReadOnlyList<SwingPoint> Swings => _swings;
 
-    public void Update(in Candle c, double? atr)
+    public void Update(in Candle c, double? atr) => Update(c, atr, null);
+
+    public void Update(in Candle c, double? atr, double? rsi)
     {
         if (c.Timeframe != _tf) throw new ArgumentException($"Expected {_tf}, got {c.Timeframe}.");
         _barIndex++;
@@ -71,10 +76,13 @@ public sealed class MarketStructureAnalyzer
             if (low < _sessionLow) _sessionLow = low;
         }
 
+        _rsi.Add(rsi ?? double.NaN);
         var tolerance = atr is { } a && a > 0 ? a * _o.LevelToleranceAtr : close * _o.LevelTolerancePct;
         var (sh, sl) = _detector.Update(c);
-        if (sh is { } h) AddSwing(h, tolerance);
-        if (sl is { } l) AddSwing(l, tolerance);
+        // RSI as of the swing bar: the swing is `strength` bars back from this bar.
+        double? swingRsi = _rsi.Count > _o.SwingStrength && !double.IsNaN(_rsi.FromEnd(_o.SwingStrength)) ? _rsi.FromEnd(_o.SwingStrength) : null;
+        if (sh is { } h) AddSwing(h with { Rsi = swingRsi }, tolerance, c.CloseTime);
+        if (sl is { } l) AddSwing(l with { Rsi = swingRsi }, tolerance, c.CloseTime);
 
         // Expire stale levels.
         _levels.RemoveAll(lv => _barIndex - lv.LastBar > _o.LevelMaxAgeBars);
@@ -85,11 +93,12 @@ public sealed class MarketStructureAnalyzer
         double? rangeLow = _lows.IsFull ? Min(_lows) : null;
 
         _last = new StructureSnapshot(_tf, c.CloseTime, _barIndex, close, atr, _swings.ToArray(), levels, trend, labels,
-            rangeHigh, rangeLow, _o.RangeLookback, _sessionHigh, _sessionLow);
+            rangeHigh, rangeLow, _o.RangeLookback, _sessionHigh, _sessionLow, _divergences.ToArray());
     }
 
-    private void AddSwing(SwingPoint s, double tolerance)
+    private void AddSwing(SwingPoint s, double tolerance, DateTimeOffset confirmedAt)
     {
+        DetectDivergence(s, tolerance, confirmedAt);
         _swings.Add(s);
         if (_swings.Count > _o.MaxSwings) _swings.RemoveAt(0);
 
@@ -109,6 +118,19 @@ public sealed class MarketStructureAnalyzer
         nearest.Touches++;
         nearest.Last = s.BarTime;
         nearest.LastBar = s.BarIndex;
+    }
+
+    private void DetectDivergence(SwingPoint s, double tolerance, DateTimeOffset at)
+    {
+        if (s.Rsi is not { } rsiNow) return;
+        SwingPoint? prev = null;
+        for (var i = _swings.Count - 1; i >= 0; i--) if (_swings[i].Type == s.Type) { prev = _swings[i]; break; }
+        if (prev is not { Rsi: { } rsiPrev } p) return;
+        if (s.Type == SwingType.Low && s.Price < p.Price - tolerance && rsiNow > rsiPrev + RsiDivergenceMargin)
+            _divergences.Add(new Divergence(DivergenceType.BullishRsi, at, s.BarIndex, p.Price, s.Price, rsiPrev, rsiNow));
+        else if (s.Type == SwingType.High && s.Price > p.Price + tolerance && rsiNow < rsiPrev - RsiDivergenceMargin)
+            _divergences.Add(new Divergence(DivergenceType.BearishRsi, at, s.BarIndex, p.Price, s.Price, rsiPrev, rsiNow));
+        if (_divergences.Count > 8) _divergences.RemoveAt(0);
     }
 
     private IReadOnlyList<PriceLevel> BuildLevels()
@@ -164,7 +186,7 @@ public sealed class MarketStructureAnalyzer
 
     public void Reset()
     {
-        _detector.Reset(); _swings.Clear(); _levels.Clear(); _highs.Clear(); _lows.Clear();
+        _detector.Reset(); _swings.Clear(); _levels.Clear(); _highs.Clear(); _lows.Clear(); _rsi.Clear(); _divergences.Clear();
         _barIndex = -1; _session = null; _sessionHigh = double.NaN; _sessionLow = double.NaN; _last = null;
     }
 }

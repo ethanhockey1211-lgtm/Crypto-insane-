@@ -5,6 +5,8 @@ using TradingScanner.Api.Services;
 using TradingScanner.Analytics;
 using TradingScanner.Signals;
 using TradingScanner.Signals.Breakouts;
+using TradingScanner.Signals.Scanner;
+using TradingScanner.Signals.Tape;
 using TradingScanner.Core;
 using TradingScanner.Core.Market;
 using TradingScanner.MarketData.Engine;
@@ -64,6 +66,19 @@ public static class MarketEndpoints
             if (!TryParseSymbol(symbol, out var sym)) return TypedResults.NotFound();
             var analysis = signals.GetBreakouts(sym);
             return analysis is null ? TypedResults.NotFound() : TypedResults.Ok(analysis);
+        });
+
+        var scanner = app.MapGroup("/api/scanner").RequireRateLimiting("api");
+        scanner.MapGet("/", Results<Ok<ScannerStreamDto>, NotFound> (IScannerReader reader) =>
+            reader.Latest is { } s ? TypedResults.Ok(ScannerBroadcaster.ToStream(s)) : TypedResults.NotFound());
+        scanner.MapGet("/market", Results<Ok<MarketContext>, NotFound> (IScannerReader reader) =>
+            reader.Latest is { } s ? TypedResults.Ok(s.Market) : TypedResults.NotFound());
+        scanner.MapGet("/tape", (IScannerReader reader, int? limit) => Results.Ok(reader.Tape.Recent(Math.Clamp(limit ?? 100, 1, 300))));
+        scanner.MapGet("/{symbol}", Results<Ok<Opportunity>, NotFound> (string symbol, IScannerReader reader) =>
+        {
+            if (!TryParseSymbol(symbol, out var sym)) return TypedResults.NotFound();
+            var o = reader.Get(sym);
+            return o is null ? TypedResults.NotFound() : TypedResults.Ok(o);
         });
 
         var system = app.MapGroup("/api/system").RequireRateLimiting("api");

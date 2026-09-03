@@ -9,6 +9,8 @@ namespace TradingScanner.Api.Hubs;
 ///   "candle"  CandleClosedDto   for subscribed symbol/timeframe groups
 ///   "feed"    FeedStatusDto     provider status transitions
 ///   "gap"     GapDto            missed-trade notices
+///   "scanner" ScannerStreamDto  ranked universe + market context, every scanner cycle
+///   "tape"    TapeEvent         what's-moving-now events as they happen
 /// </summary>
 public sealed class MarketHub : Hub
 {

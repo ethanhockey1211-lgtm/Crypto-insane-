@@ -28,6 +28,8 @@ builder.Services.AddSingleton<MarketBroadcaster>();
 builder.Services.AddSingleton<IMarketEventObserver>(sp => sp.GetRequiredService<MarketBroadcaster>());
 builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<MarketBroadcaster>());
 
+builder.Services.AddHostedService<ScannerBroadcaster>();
+
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 64 * 1024)
     .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 

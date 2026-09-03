@@ -54,6 +54,7 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<IMarketStateReader>(sp => sp.GetRequiredService<MarketStateEngine>());
         services.AddSingleton<TradingScanner.Core.Market.ICandleHistoryReader>(sp => sp.GetRequiredService<MarketStateEngine>());
+        services.AddSingleton<TradingScanner.Core.Market.ISymbolInfoReader>(sp => sp.GetRequiredService<MarketStateEngine>());
         services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<MarketStateEngine>());
         services.AddSingleton<HistoryWarmUp>();
         services.AddHostedService<MarketDataOrchestrator>();

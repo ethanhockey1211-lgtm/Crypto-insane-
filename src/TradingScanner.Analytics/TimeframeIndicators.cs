@@ -9,6 +9,9 @@ public sealed class TimeframeIndicators
     private readonly Ema _ema9 = new(9), _ema20 = new(20), _ema50 = new(50), _ema200 = new(200);
     private readonly Rsi _rsi;
     private readonly Atr _atr;
+    private readonly Atr _atrFast;
+    private readonly RollingWindow _buy;
+    private readonly RollingWindow _sell;
     private readonly RelativeVolume _relVol;
     private readonly RealizedVolatility _rvol;
     private bool? _ema9Above20;
@@ -25,6 +28,9 @@ public sealed class TimeframeIndicators
         Timeframe = timeframe;
         _rsi = new Rsi(options.RsiPeriod);
         _atr = new Atr(options.AtrPeriod);
+        _atrFast = new Atr(options.AtrFastPeriod);
+        _buy = new RollingWindow(options.BuyShareBars);
+        _sell = new RollingWindow(options.BuyShareBars);
         _relVol = new RelativeVolume(options.RelativeVolumeBaseline, options.RelativeVolumeFast);
         _rvol = new RealizedVolatility(options.RealizedVolatilityPeriod);
     }
@@ -36,6 +42,9 @@ public sealed class TimeframeIndicators
         _ema9.Update(close); _ema20.Update(close); _ema50.Update(close); _ema200.Update(close);
         _rsi.Update(close);
         _atr.Update((double)c.High, (double)c.Low, close);
+        _atrFast.Update((double)c.High, (double)c.Low, close);
+        _buy.Add((double)c.BuyVolume);
+        _sell.Add((double)c.SellVolume);
         _relVol.Update((double)c.Volume);
         _rvol.Update(close);
         Bars++;
@@ -75,7 +84,10 @@ public sealed class TimeframeIndicators
             _relVol.IsReady && !double.IsNaN(_relVol.FastRatio) ? _relVol.FastRatio : null,
             _rvol.IsReady ? _rvol.Value * 100 : null,
             alignment, spread, _barsSinceCross, _lastCross,
-            _ema20.IsReady && _atr.IsReady && _atr.Value > 0 ? (close - _ema20.Value) / _atr.Value : null);
+            _ema20.IsReady && _atr.IsReady && _atr.Value > 0 ? (close - _ema20.Value) / _atr.Value : null,
+            _atr.IsReady && _atrFast.IsReady && _atr.Value > 0 ? _atrFast.Value / _atr.Value : null,
+            _buy.IsFull && _buy.Sum + _sell.Sum > 0 ? _buy.Sum / (_buy.Sum + _sell.Sum) : null,
+            (double)c.Open, (double)c.High, (double)c.Low);
     }
 
     private static double? Val(Ema e) => e.IsReady ? e.Value : null;
@@ -97,7 +109,7 @@ public sealed class TimeframeIndicators
     public void Reset()
     {
         _ema9.Reset(); _ema20.Reset(); _ema50.Reset(); _ema200.Reset();
-        _rsi.Reset(); _atr.Reset(); _relVol.Reset(); _rvol.Reset();
+        _rsi.Reset(); _atr.Reset(); _atrFast.Reset(); _buy.Clear(); _sell.Clear(); _relVol.Reset(); _rvol.Reset();
         _ema9Above20 = null; _barsSinceCross = null; _lastCross = CrossDirection.None; _last = null; Bars = 0;
     }
 }

@@ -14,7 +14,10 @@ public sealed class SymbolAnalytics
     private readonly TimeframeIndicators[] _tf;
     private readonly MarketStructureAnalyzer?[] _structure;
     private readonly SessionVwap _vwap = new();
+    private readonly VwapCrossTracker _vwapCross = new();
     private readonly MomentumTracker _momentum = new();
+    private readonly RollingWindow _recentReturns;
+    private double _prevM1Close = double.NaN;
     private DateTimeOffset _asOf;
 
     public Symbol Symbol { get; }
@@ -24,6 +27,7 @@ public sealed class SymbolAnalytics
         Symbol = symbol;
         _tf = Timeframes.Select(t => new TimeframeIndicators(t, options)).ToArray();
         _structure = Timeframes.Select(t => options.Structure.Timeframes.Contains(t) ? new MarketStructureAnalyzer(t, options.Structure) : null).ToArray();
+        _recentReturns = new RollingWindow(options.RecentReturnBars);
     }
 
     public TimeframeIndicators Indicators(Timeframe tf) => _tf[Array.IndexOf(Timeframes, tf)];
@@ -33,11 +37,15 @@ public sealed class SymbolAnalytics
     {
         var i = Array.IndexOf(Timeframes, c.Timeframe);
         _tf[i].Update(c);
-        _structure[i]?.Update(c, _tf[i].Last?.Atr);
+        _structure[i]?.Update(c, _tf[i].Last?.Atr, _tf[i].Last?.Rsi);
         if (c.Timeframe == Timeframe.M1)
         {
+            var close = (double)c.Close;
             _vwap.Update(c);
-            _momentum.Update((double)c.Close);
+            if (_vwap.IsReady) _vwapCross.Update(close, _vwap.Value, c.CloseTime, _tf[i].Last?.RelVolume);
+            _momentum.Update(close);
+            if (!double.IsNaN(_prevM1Close) && _prevM1Close > 0 && close > 0) _recentReturns.Add(Math.Log(close / _prevM1Close));
+            _prevM1Close = close;
         }
         if (c.CloseTime > _asOf) _asOf = c.CloseTime;
     }
@@ -52,7 +60,10 @@ public sealed class SymbolAnalytics
         foreach (var t in _tf) t.Reset();
         foreach (var st in _structure) st?.Reset();
         _vwap.Reset();
+        _vwapCross.Reset();
         _momentum.Reset();
+        _recentReturns.Clear();
+        _prevM1Close = double.NaN;
         _asOf = default;
 
         var all = new List<Candle>();
@@ -91,12 +102,14 @@ public sealed class SymbolAnalytics
                 if (_momentum.CloseAgo(h - 1) is { } r) refs[h] = r;
                 if (_momentum.CloseAgo(2 * h - 1) is { } p) prev[h] = p;
             }
-            momentum = new MomentumValues(_momentum.CloseAgo(0)!.Value, refs, prev);
+            var recent = new double[_recentReturns.Count];
+            for (var k = 0; k < recent.Length; k++) recent[k] = _recentReturns.FromEnd(recent.Length - 1 - k);
+            momentum = new MomentumValues(_momentum.CloseAgo(0)!.Value, refs, prev, recent);
         }
 
         var structure = new List<StructureSnapshot>(3);
         foreach (var st in _structure) if (st?.Last is { } ss) structure.Add(ss);
 
-        return new AnalyticsSnapshot(Symbol, _asOf, values, vwap, momentum, structure);
+        return new AnalyticsSnapshot(Symbol, _asOf, values, vwap, momentum, structure, _vwapCross.State);
     }
 }

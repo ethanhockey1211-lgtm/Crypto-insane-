@@ -28,7 +28,15 @@ public sealed record IndicatorValues(
     double? EmaSpreadPct,
     int? BarsSinceEma9x20Cross,
     CrossDirection LastEma9x20Cross,
-    double? DistanceToEma20Atr)
+    double? DistanceToEma20Atr,
+    /// <summary>Short ATR / regular ATR: below ~0.7 = compression, above ~1.3 = expansion.</summary>
+    double? AtrRatio = null,
+    /// <summary>Taker buy volume share over the last N bars (0..1); null when side volume is unknown.</summary>
+    double? BuyShare = null,
+    /// <summary>Highest high over the last N bars of this timeframe, from the indicator window.</summary>
+    double? Open = null,
+    double? High = null,
+    double? Low = null)
 {
     /// <summary>Distance of <paramref name="price"/> from EMA20 in ATR units, using closed-bar values.</summary>
     public double? Ema20DistanceAtr(double price) => Ema20 is { } e && Atr is { } a && a > 0 ? (price - e) / a : null;
@@ -42,7 +50,12 @@ public sealed record VwapValues(DateTimeOffset SessionStart, double Vwap, double
 }
 
 /// <summary>Reference closes needed to project returns at any live price without re-reading the series.</summary>
-public sealed record MomentumValues(double LastClose, IReadOnlyDictionary<int, double> ReferenceCloses, IReadOnlyDictionary<int, double> PreviousWindowCloses)
+public sealed record MomentumValues(
+    double LastClose,
+    IReadOnlyDictionary<int, double> ReferenceCloses,
+    IReadOnlyDictionary<int, double> PreviousWindowCloses,
+    /// <summary>Most recent 1m log returns, oldest first, for cross-asset correlation.</summary>
+    double[]? RecentReturns = null)
 {
     public double? Return(int minutes, double price) =>
         ReferenceCloses.TryGetValue(minutes, out var r) && r > 0 ? price / r - 1 : null;
@@ -67,6 +80,15 @@ public sealed record MomentumProjection(
 
 public sealed record VwapProjection(DateTimeOffset SessionStart, double Vwap, double Std, int Bars, double DeviationPct, double? Sigma, bool Above);
 
+/// <summary>Where price sits relative to session VWAP on closed 1m bars, and how it got there.</summary>
+public sealed record VwapState(
+    bool Above,
+    int BarsOnCurrentSide,
+    int BarsOnPreviousSide,
+    CrossDirection LastCross,
+    DateTimeOffset? LastCrossAt,
+    double? CrossRelVol);
+
 /// <summary>Immutable per-symbol analytics as of the last closed bars. Safe to read from any thread.</summary>
 public sealed record AnalyticsSnapshot(
     Symbol Symbol,
@@ -74,7 +96,8 @@ public sealed record AnalyticsSnapshot(
     IReadOnlyList<IndicatorValues> Timeframes,
     VwapValues? Vwap,
     MomentumValues? Momentum,
-    IReadOnlyList<Structure.StructureSnapshot> Structure)
+    IReadOnlyList<Structure.StructureSnapshot> Structure,
+    VwapState? VwapState = null)
 {
     public IndicatorValues? For(Timeframe tf)
     {
@@ -93,7 +116,8 @@ public sealed record AnalyticsSnapshot(
         Symbol, AsOf, now, price, Timeframes,
         Vwap is { } v ? new VwapProjection(v.SessionStart, v.Vwap, v.Std, v.Bars, v.DeviationPct(price), v.Sigma(price), price > v.Vwap) : null,
         Momentum?.Project(price),
-        Structure);
+        Structure,
+        VwapState);
 }
 
 public sealed record AnalyticsProjection(
@@ -104,7 +128,8 @@ public sealed record AnalyticsProjection(
     IReadOnlyList<IndicatorValues> Timeframes,
     VwapProjection? Vwap,
     MomentumProjection? Momentum,
-    IReadOnlyList<Structure.StructureSnapshot> Structure)
+    IReadOnlyList<Structure.StructureSnapshot> Structure,
+    VwapState? VwapState = null)
 {
     public IndicatorValues? For(Timeframe tf)
     {

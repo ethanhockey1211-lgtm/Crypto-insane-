@@ -5,7 +5,17 @@ namespace TradingScanner.Analytics.Structure;
 public enum SwingType : byte { High = 0, Low = 1 }
 
 /// <summary>A confirmed fractal swing. Confirmed only after <c>strength</c> later bars closed, so it is never known early.</summary>
-public readonly record struct SwingPoint(SwingType Type, double Price, DateTimeOffset BarTime, long BarIndex, DateTimeOffset ConfirmedAt);
+public readonly record struct SwingPoint(SwingType Type, double Price, DateTimeOffset BarTime, long BarIndex, DateTimeOffset ConfirmedAt, double? Rsi = null);
+
+public enum DivergenceType : byte
+{
+    /// <summary>Price made a lower low while RSI made a higher low.</summary>
+    BullishRsi = 0,
+    /// <summary>Price made a higher high while RSI made a lower high.</summary>
+    BearishRsi = 1,
+}
+
+public sealed record Divergence(DivergenceType Type, DateTimeOffset DetectedAt, long BarIndex, double PreviousPrice, double Price, double PreviousRsi, double Rsi);
 
 public enum LevelSource : byte
 {
@@ -49,8 +59,10 @@ public sealed record StructureSnapshot(
     double? RangeLow,
     int RangeLookback,
     double? SessionHigh,
-    double? SessionLow)
+    double? SessionLow,
+    IReadOnlyList<Divergence>? Divergences = null)
 {
+    public Divergence? LatestDivergence => Divergences is { Count: > 0 } d ? d[^1] : null;
     public PriceLevel? NearestResistance => NearestAbove(Close);
     public PriceLevel? NearestSupport => NearestBelow(Close);
 

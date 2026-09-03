@@ -14,8 +14,9 @@ Nothing here predicts prices. No setup is ever presented as certain. Real-money 
 | 1 | Market data: Coinbase Exchange WebSocket adapter, universe selection, candle engine (1m→4h), REST warm-up, reconnect/gap handling, API + SignalR stream | Implemented, tested |
 | 2 | Analytics: EMA 9/20/50/200, Wilder RSI/ATR, session VWAP with deviation bands, relative volume, realized volatility, multi-horizon momentum with acceleration, EMA alignment/cross tracking; rebuild-from-history; `GET /api/market/{symbol}/analytics` | Implemented, tested |
 | 3 | Market structure on 5m/15m/1h: confirmed fractal swings, stable clustered levels, HH/HL/LH/LL/EH/EL trend labels, range and session extremes; per-level breakout state machine (Watching → Approaching → Attempt → Confirmed → Retesting → Retest Held / Failed / Extended) in ATR units with retest metrics and narratives; chronological history replay through the live path; `GET /api/market/{symbol}/breakouts` | Implemented, tested |
-| 4 | Scanner: setup classification, opportunity scoring, ranking, BTC filter, trade plans, SignalR scanner stream | Next |
-| 5–10 | Dashboard, alerts, paper trading, signal analytics, backtesting, AI explanation | Planned |
+| 4 | Scanner: BTC/ETH state, breadth and risk regime; anti-FOMO overextension assessment with DO NOT CHASE; setup classification (Breakout, Breakout+Retest, VWAP Reclaim, Support Bounce, Momentum Continuation, Range Breakout, Trend Pullback, Reversal, Volume/Volatility Expansion); configurable 0–100 score with evidence per component and penalty; trade plans with entry zone, trigger, invalidation, stop, three resistance-capped targets and R:R; why/invalidation/risk explanations; score-change reasons; BTC correlation; ranked universe every second over SignalR; market tape | Implemented, tested |
+| 5 | Dashboard (Next.js terminal UI) | Next |
+| 6–10 | Alerts, paper trading, signal analytics, backtesting, AI explanation | Planned |
 
 ## Run the backend
 
@@ -36,10 +37,14 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | `GET /api/market/{symbol}/candles?tf=1m&limit=300` | Closed candles + forming bar. `tf` ∈ 1m,3m,5m,15m,30m,1h,4h |
 | `GET /api/market/{symbol}/analytics` | Per-timeframe indicators as of the last closed bar, market structure (swings, levels, trend), plus momentum and VWAP deviation projected at the live price |
 | `GET /api/market/{symbol}/breakouts` | Breakout state per structure level on the 5m timeframe with retest metrics and a plain-language narrative |
+| `GET /api/scanner` | Ranked universe (compact rows) plus market context from the latest scanner cycle |
+| `GET /api/scanner/{symbol}` | Full opportunity: score breakdown, setup evidence, trade plan, overextension, why / invalidation / risks, metrics, data quality |
+| `GET /api/scanner/market` | Regime, BTC/ETH state, breadth, notes |
+| `GET /api/scanner/tape?limit=100` | Recent what's-moving-now events |
 | `GET /api/system/feed` | Provider status per connection, last event age, universe size |
 | `GET /api/system/metrics` | Ingestion counters: messages, reconnects, gaps, latency, channel depth |
 | `GET /health/live`, `GET /health/ready` | Liveness / readiness (ready = feed connected and fresh) |
-| `/hubs/market` (SignalR) | `quotes` batches every 250 ms, `candle` closes for subscribed groups, `feed` status, `gap` notices |
+| `/hubs/market` (SignalR) | `quotes` batches every 250 ms, `candle` closes for subscribed groups, `feed` status, `gap` notices, `scanner` ranked snapshot each cycle, `tape` events |
 
 Startup sequence: list products → fetch 24h stats → select top-N USD pairs by quote volume → open sharded
 WebSocket connections (`matches`, `ticker`, `heartbeat`) → warm 1m/5m/15m/1h history via REST while live
