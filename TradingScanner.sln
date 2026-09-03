@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{BD9F46C2-B824-486E-A67F-804CFE77A2FC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradingScanner.Core", "src\TradingScanner.Core\TradingScanner.Core.csproj", "{8D237CF0-FCAB-4C60-9077-429B86189B19}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradingScanner.MarketData", "src\TradingScanner.MarketData\TradingScanner.MarketData.csproj", "{DC4B10D0-F447-4F9D-B931-86D018718C8C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradingScanner.Api", "src\TradingScanner.Api\TradingScanner.Api.csproj", "{0FF09C48-B253-43EF-A5B3-A41F2839DFD7}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{BE2AA742-B764-48C6-9674-0EF9BBEE26F6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradingScanner.Tests", "tests\TradingScanner.Tests\TradingScanner.Tests.csproj", "{A55C16E0-C1A4-4CA1-AD57-657F82671674}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8D237CF0-FCAB-4C60-9077-429B86189B19}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D237CF0-FCAB-4C60-9077-429B86189B19}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D237CF0-FCAB-4C60-9077-429B86189B19}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8D237CF0-FCAB-4C60-9077-429B86189B19}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DC4B10D0-F447-4F9D-B931-86D018718C8C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DC4B10D0-F447-4F9D-B931-86D018718C8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DC4B10D0-F447-4F9D-B931-86D018718C8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DC4B10D0-F447-4F9D-B931-86D018718C8C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0FF09C48-B253-43EF-A5B3-A41F2839DFD7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0FF09C48-B253-43EF-A5B3-A41F2839DFD7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0FF09C48-B253-43EF-A5B3-A41F2839DFD7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0FF09C48-B253-43EF-A5B3-A41F2839DFD7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A55C16E0-C1A4-4CA1-AD57-657F82671674}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A55C16E0-C1A4-4CA1-AD57-657F82671674}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A55C16E0-C1A4-4CA1-AD57-657F82671674}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A55C16E0-C1A4-4CA1-AD57-657F82671674}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{8D237CF0-FCAB-4C60-9077-429B86189B19} = {BD9F46C2-B824-486E-A67F-804CFE77A2FC}
+		{DC4B10D0-F447-4F9D-B931-86D018718C8C} = {BD9F46C2-B824-486E-A67F-804CFE77A2FC}
+		{0FF09C48-B253-43EF-A5B3-A41F2839DFD7} = {BD9F46C2-B824-486E-A67F-804CFE77A2FC}
+		{A55C16E0-C1A4-4CA1-AD57-657F82671674} = {BE2AA742-B764-48C6-9674-0EF9BBEE26F6}
+	EndGlobalSection
+EndGlobal

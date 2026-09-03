@@ -1,0 +1,71 @@
+# TradingScanner
+
+Real-time crypto day-trading intelligence platform. Ingests exchange trade streams for the liquid crypto
+universe, builds multi-timeframe candles and indicators in memory, detects and classifies market-structure
+events, scores every asset for risk-adjusted short-term opportunity, and pushes ranked results to a
+terminal-style UI. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and phase plan.
+
+Nothing here predicts prices. No setup is ever presented as certain. Real-money execution does not exist in this codebase.
+
+## Status
+
+| Phase | Scope | State |
+|---|---|---|
+| 1 | Market data: Coinbase Exchange WebSocket adapter, universe selection, candle engine (1m→4h), REST warm-up, reconnect/gap handling, API + SignalR stream | Implemented, tested |
+| 2 | Analytics: EMA/VWAP/RSI/ATR/relative volume/momentum | Next |
+| 3–10 | Structure, scanner, dashboard, alerts, paper trading, signal analytics, backtesting, AI explanation | Planned |
+
+## Run the backend
+
+Requires .NET 8 SDK. Docker Compose provides TimescaleDB + Redis for later phases (not needed for Phase 1).
+
+```bash
+dotnet build
+dotnet test
+dotnet run --project src/TradingScanner.Api
+```
+
+The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.json`).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/market/symbols` | Universe with latest quote, provenance (provider, exchange, exchange time, age, stale flag), 24h stats |
+| `GET /api/market/{symbol}/quote` | One symbol |
+| `GET /api/market/{symbol}/candles?tf=1m&limit=300` | Closed candles + forming bar. `tf` ∈ 1m,3m,5m,15m,30m,1h,4h |
+| `GET /api/system/feed` | Provider status per connection, last event age, universe size |
+| `GET /api/system/metrics` | Ingestion counters: messages, reconnects, gaps, latency, channel depth |
+| `GET /health/live`, `GET /health/ready` | Liveness / readiness (ready = feed connected and fresh) |
+| `/hubs/market` (SignalR) | `quotes` batches every 250 ms, `candle` closes for subscribed groups, `feed` status, `gap` notices |
+
+Startup sequence: list products → fetch 24h stats → select top-N USD pairs by quote volume → open sharded
+WebSocket connections (`matches`, `ticker`, `heartbeat`) → warm 1m/5m/15m/1h history via REST while live
+trades stream. Expect roughly a minute for warm-up of 200 symbols at the default 8 requests/second.
+
+### Configuration (`appsettings.json` → `MarketData`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `UniverseSize` | 200 | Symbols after ranking by 24h quote volume |
+| `MinVolume24hQuote` | 1,000,000 | Liquidity floor in quote currency |
+| `SymbolsPerConnection` | 60 | Sharding of the WebSocket subscription |
+| `CandleCloseGrace` | 2s | Wait for late trades before the clock closes a bar |
+| `StaleQuoteThreshold` | 30s | Quotes older than this are flagged stale |
+| `ReceiveTimeout` | 15s | Silence that forces a reconnect (heartbeats arrive every second) |
+| `WarmUpHistory` | true | Load REST history at startup |
+
+## Data integrity rules implemented in Phase 1
+
+- Every price carries provider, exchange, exchange timestamp, receive timestamp, and computed age.
+- Candles are bucketed by exchange time; local time is only used for latency metrics.
+- Missed trades are detected by per-product `trade_id` continuity and surfaced as gap events and a `Degraded` feed status. Nothing is interpolated.
+- Empty minutes are filled with explicitly flagged synthetic bars so series stay time-regular; synthetic bars carry zero volume.
+- Feed loss is a first-class state (`Reconnecting`) exposed on `/api/system/feed`, `/health/ready`, and the SignalR `feed` message. The UI (Phase 5) shows `LIVE DATA INTERRUPTED` from this signal.
+
+## Tests
+
+`dotnet test` runs unit tests for bucketing, candle construction, aggregation, series storage, universe selection,
+the Coinbase protocol parser (against documented message shapes), the REST client (stubbed HTTP), the provider's
+reconnect/resubscribe/gap logic (scripted sockets), a real in-process WebSocket server drop-and-reconnect scenario,
+the engine loop, and the API host with a fake provider (REST, health, SignalR).
+
+Live exchange connectivity is **not** exercised by the test suite. Run the API on a machine with internet access to validate against the real feed.
