@@ -1,0 +1,10 @@
+import { chromium } from "playwright";
+const out = process.argv[2];
+const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" }).catch(async () => chromium.launch());
+const page = await browser.newPage({ viewport: { width: 1600, height: 900 }, colorScheme: "dark" });
+page.on("pageerror", (e) => console.log("PAGE ERROR", e.message));
+await page.goto("http://localhost:3000/", { waitUntil: "networkidle" });
+await page.getByRole("button", { name: "alerts" }).click();
+await page.waitForTimeout(800);
+await page.screenshot({ path: `${out}/alerts.png` });
+await browser.close();

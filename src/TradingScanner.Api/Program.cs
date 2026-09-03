@@ -69,6 +69,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 
 app.MapMarketEndpoints();
+app.MapAlertEndpoints();
 app.MapHub<MarketHub>("/hubs/market");
 app.MapGet("/", () => Results.Redirect("/api/system/feed"));
 

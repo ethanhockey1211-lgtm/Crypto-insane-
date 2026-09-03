@@ -11,6 +11,7 @@ namespace TradingScanner.Api.Hubs;
 ///   "gap"     GapDto            missed-trade notices
 ///   "scanner" ScannerStreamDto  ranked universe + market context, every scanner cycle
 ///   "tape"    TapeEvent         what's-moving-now events as they happen
+///   "alert"   AlertEvent        a user alert rule fired
 /// </summary>
 public sealed class MarketHub : Hub
 {

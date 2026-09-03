@@ -16,7 +16,8 @@ Nothing here predicts prices. No setup is ever presented as certain. Real-money 
 | 3 | Market structure on 5m/15m/1h: confirmed fractal swings, stable clustered levels, HH/HL/LH/LL/EH/EL trend labels, range and session extremes; per-level breakout state machine (Watching → Approaching → Attempt → Confirmed → Retesting → Retest Held / Failed / Extended) in ATR units with retest metrics and narratives; chronological history replay through the live path; `GET /api/market/{symbol}/breakouts` | Implemented, tested |
 | 4 | Scanner: BTC/ETH state, breadth and risk regime; anti-FOMO overextension assessment with DO NOT CHASE; setup classification (Breakout, Breakout+Retest, VWAP Reclaim, Support Bounce, Momentum Continuation, Range Breakout, Trend Pullback, Reversal, Volume/Volatility Expansion); configurable 0–100 score with evidence per component and penalty; trade plans with entry zone, trigger, invalidation, stop, three resistance-capped targets and R:R; why/invalidation/risk explanations; score-change reasons; BTC correlation; ranked universe every second over SignalR; market tape | Implemented, tested |
 | 5 | Dashboard: Next.js 15 / React 19 / TypeScript / Tailwind 4 / Lightweight Charts 5. Market regime header, ranked scanner with per-row score ledger (component segments + penalty cut), setup drawer with chart and plan lines, plan / why / invalidation / risks, momentum, levels, score breakdown, position calculator, watchlist (browser-persisted), heatmap, market tape, LIVE DATA INTERRUPTED banner. Store lives outside React with per-symbol subscriptions and animation-frame batching | Implemented |
-| 6–10 | Alerts, paper trading, signal analytics, backtesting, AI explanation | Planned |
+| 6 | Alerts: compound conditions over price, score, momentum, volume, RSI, VWAP relation, breakout state, setup, BTC trend/dump, regime and more; cross-above/below operators; hold time so wicks never fire; edge-triggered with optional repeat and cooldown; per-symbol or universe-wide rules; browser notifications and https webhooks (Discord-compatible body plus the full event); `/api/alerts` CRUD, `/api/alerts/events`, SignalR `alert`; alert manager view | Implemented, tested |
+| 7–10 | Paper trading, signal analytics, backtesting, AI explanation | Planned |
 
 ## Run the backend
 
@@ -41,10 +42,11 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | `GET /api/scanner/{symbol}` | Full opportunity: score breakdown, setup evidence, trade plan, overextension, why / invalidation / risks, metrics, data quality |
 | `GET /api/scanner/market` | Regime, BTC/ETH state, breadth, notes |
 | `GET /api/scanner/tape?limit=100` | Recent what's-moving-now events |
+| `GET/POST/PUT/DELETE /api/alerts`, `GET /api/alerts/events`, `GET /api/alerts/fields` | Alert rules and fired events. Rules are in memory unless a database is configured |
 | `GET /api/system/feed` | Provider status per connection, last event age, universe size |
 | `GET /api/system/metrics` | Ingestion counters: messages, reconnects, gaps, latency, channel depth |
 | `GET /health/live`, `GET /health/ready` | Liveness / readiness (ready = feed connected and fresh) |
-| `/hubs/market` (SignalR) | `quotes` batches every 250 ms, `candle` closes for subscribed groups, `feed` status, `gap` notices, `scanner` ranked snapshot each cycle, `tape` events |
+| `/hubs/market` (SignalR) | `quotes` batches every 250 ms, `candle` closes for subscribed groups, `feed` status, `gap` notices, `scanner` ranked snapshot each cycle, `tape` events, `alert` firings |
 
 Startup sequence: list products → fetch 24h stats → select top-N USD pairs by quote volume → open sharded
 WebSocket connections (`matches`, `ticker`, `heartbeat`) → warm 1m/5m/15m/1h history via REST while live

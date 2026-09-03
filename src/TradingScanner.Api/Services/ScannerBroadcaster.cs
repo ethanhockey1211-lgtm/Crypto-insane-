@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Microsoft.AspNetCore.SignalR;
 using TradingScanner.Api.Contracts;
 using TradingScanner.Api.Hubs;
+using TradingScanner.Signals.Alerts;
 using TradingScanner.Signals.Scanner;
 using TradingScanner.Signals.Tape;
 
@@ -11,13 +12,15 @@ namespace TradingScanner.Api.Services;
 public sealed class ScannerBroadcaster : BackgroundService
 {
     private readonly ScannerService _scanner;
+    private readonly AlertService _alerts;
     private readonly IHubContext<MarketHub> _hub;
     private readonly ILogger<ScannerBroadcaster> _logger;
     private readonly Channel<object> _queue = Channel.CreateBounded<object>(new BoundedChannelOptions(64) { SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest });
 
-    public ScannerBroadcaster(ScannerService scanner, IHubContext<MarketHub> hub, ILogger<ScannerBroadcaster> logger)
+    public ScannerBroadcaster(ScannerService scanner, AlertService alerts, IHubContext<MarketHub> hub, ILogger<ScannerBroadcaster> logger)
     {
         _scanner = scanner;
+        _alerts = alerts;
         _hub = hub;
         _logger = logger;
     }
@@ -28,8 +31,10 @@ public sealed class ScannerBroadcaster : BackgroundService
     {
         void OnSnapshot(ScannerSnapshot s) => _queue.Writer.TryWrite(s);
         void OnTape(TapeEvent e) => _queue.Writer.TryWrite(e);
+        void OnAlert(AlertEvent e) => _queue.Writer.TryWrite(e);
         _scanner.SnapshotPublished += OnSnapshot;
         _scanner.Tape.Published += OnTape;
+        _alerts.Fired += OnAlert;
         try
         {
             await foreach (var item in _queue.Reader.ReadAllAsync(stoppingToken))
@@ -40,6 +45,7 @@ public sealed class ScannerBroadcaster : BackgroundService
                     {
                         case ScannerSnapshot s: await _hub.Clients.All.SendAsync("scanner", ToStream(s), stoppingToken); break;
                         case TapeEvent e: await _hub.Clients.All.SendAsync("tape", e, stoppingToken); break;
+                        case AlertEvent a: await _hub.Clients.All.SendAsync("alert", a, stoppingToken); break;
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -53,6 +59,7 @@ public sealed class ScannerBroadcaster : BackgroundService
         {
             _scanner.SnapshotPublished -= OnSnapshot;
             _scanner.Tape.Published -= OnTape;
+            _alerts.Fired -= OnAlert;
         }
     }
 }

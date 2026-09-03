@@ -1,6 +1,6 @@
 "use client";
 import { useSyncExternalStore } from "react";
-import type { CandleClosed, FeedStatus, MarketContext, QuoteDto, ScannerRow, ScannerStream, TapeEvent } from "./types";
+import type { AlertEvent, CandleClosed, FeedStatus, MarketContext, QuoteDto, ScannerRow, ScannerStream, TapeEvent } from "./types";
 
 type Listener = () => void;
 
@@ -16,18 +16,21 @@ class MarketStore {
   private feed: FeedStatus | null = null;
   private hub: "connecting" | "connected" | "reconnecting" | "disconnected" = "connecting";
   private tape: TapeEvent[] = [];
+  private alerts: AlertEvent[] = [];
   private cycle: { at: string | null; ms: number } = { at: null, ms: 0 };
 
   private symbolListeners = new Map<string, Set<Listener>>();
   private listListeners = new Set<Listener>();
   private headerListeners = new Set<Listener>();
   private tapeListeners = new Set<Listener>();
+  private alertListeners = new Set<Listener>();
   private candleListeners = new Map<string, Set<(c: CandleClosed) => void>>();
 
   private dirtySymbols = new Set<string>();
   private dirtyList = false;
   private dirtyHeader = false;
   private dirtyTape = false;
+  private dirtyAlerts = false;
   private frame: number | null = null;
 
   // ---- snapshots (stable references between changes) ----
@@ -37,6 +40,7 @@ class MarketStore {
   getFeed = () => this.feed;
   getHub = () => this.hub;
   getTape = () => this.tape;
+  getAlerts = () => this.alerts;
   getCycle = () => this.cycle;
 
   // ---- mutations ----
@@ -83,6 +87,14 @@ class MarketStore {
     this.schedule();
   }
 
+  pushAlerts(events: AlertEvent[], replace = false): void {
+    const merged = replace ? [...events] : [...events, ...this.alerts];
+    merged.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    this.alerts = merged.slice(0, 300);
+    this.dirtyAlerts = true;
+    this.schedule();
+  }
+
   emitCandle(c: CandleClosed): void {
     const set = this.candleListeners.get(`${c.symbol}:${c.timeframe}`);
     if (set) for (const l of set) l(c);
@@ -98,6 +110,7 @@ class MarketStore {
   subscribeList = (l: Listener) => { this.listListeners.add(l); return () => { this.listListeners.delete(l); }; };
   subscribeHeader = (l: Listener) => { this.headerListeners.add(l); return () => { this.headerListeners.delete(l); }; };
   subscribeTape = (l: Listener) => { this.tapeListeners.add(l); return () => { this.tapeListeners.delete(l); }; };
+  subscribeAlerts = (l: Listener) => { this.alertListeners.add(l); return () => { this.alertListeners.delete(l); }; };
   subscribeCandles(symbol: string, tf: string, l: (c: CandleClosed) => void): () => void {
     const key = `${symbol}:${tf}`;
     let set = this.candleListeners.get(key);
@@ -116,6 +129,7 @@ class MarketStore {
     if (this.dirtyList) { this.dirtyList = false; for (const l of this.listListeners) l(); }
     if (this.dirtyHeader) { this.dirtyHeader = false; for (const l of this.headerListeners) l(); }
     if (this.dirtyTape) { this.dirtyTape = false; for (const l of this.tapeListeners) l(); }
+    if (this.dirtyAlerts) { this.dirtyAlerts = false; for (const l of this.alertListeners) l(); }
   }
 
   private schedule(): void {
@@ -141,4 +155,5 @@ export const useMarket = () => useSyncExternalStore(store.subscribeHeader, store
 export const useFeed = () => useSyncExternalStore(store.subscribeHeader, store.getFeed, () => null);
 export const useHub = () => useSyncExternalStore(store.subscribeHeader, store.getHub, () => "connecting" as const);
 export const useTape = () => useSyncExternalStore(store.subscribeTape, store.getTape, () => EMPTY as TapeEvent[]);
+export const useAlerts = () => useSyncExternalStore(store.subscribeAlerts, store.getAlerts, () => EMPTY as AlertEvent[]);
 export const useCycle = () => useSyncExternalStore(store.subscribeHeader, store.getCycle, () => ({ at: null, ms: 0 }));

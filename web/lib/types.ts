@@ -138,3 +138,16 @@ export interface Opportunity {
   change: { previous: number; current: number; reasons: string[] } | null;
   quality: { stale: boolean; ageMs: number; historyLoaded: boolean; provider: string; exchange: string };
 }
+
+export interface AlertCondition { field: string; operator: string; value: string }
+export interface AlertRule {
+  id: string; name: string; enabled: boolean; symbol: string | null; conditions: AlertCondition[];
+  holdSeconds: number; cooldownSeconds: number; channels: string[]; webhookUrl: string | null;
+  createdAt: string; lastFiredAt: string | null; repeatWhileTrue: boolean;
+}
+export interface AlertRuleRequest {
+  name: string; enabled: boolean; symbol: string | null; conditions: AlertCondition[];
+  holdSeconds: number; cooldownSeconds: number; channels: string[]; webhookUrl: string | null; repeatWhileTrue: boolean;
+}
+export interface AlertEvent { id: string; ruleId: string; ruleName: string; at: string; symbol: string; message: string; values: Record<string, string> }
+export interface AlertFieldInfo { name: string; kind: "number" | "boolean" | "text" }

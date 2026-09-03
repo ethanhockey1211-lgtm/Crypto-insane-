@@ -8,8 +8,9 @@ import { TradeSetupDrawer } from "@/components/TradeSetupDrawer";
 import { MarketTape } from "@/components/MarketTape";
 import { MarketHeatmap } from "@/components/MarketHeatmap";
 import { Watchlist, useWatchlist } from "@/components/Watchlist";
+import { AlertManager } from "@/components/AlertManager";
 
-type View = "scanner" | "heatmap" | "watchlist" | "tape";
+type View = "scanner" | "heatmap" | "watchlist" | "alerts" | "tape";
 
 export default function Page() {
   const [view, setView] = useState<View>("scanner");
@@ -24,6 +25,7 @@ export default function Page() {
   const main = view === "scanner" ? <OpportunityScanner active={active} onOpen={open} />
     : view === "heatmap" ? <MarketHeatmap onOpen={open} />
     : view === "watchlist" ? <Watchlist onOpen={open} list={list} add={add} remove={remove} />
+    : view === "alerts" ? <AlertManager onOpen={open} presetSymbol={active} />
     : <MarketTape onOpen={open} />;
 
   return (
@@ -31,7 +33,7 @@ export default function Page() {
       <FeedBanner />
       <MarketHeader />
       <nav className="flex items-center gap-1 text-[11px] px-1" aria-label="Views">
-        {(["scanner", "heatmap", "watchlist", "tape"] as View[]).map((v) => (
+        {(["scanner", "heatmap", "watchlist", "alerts", "tape"] as View[]).map((v) => (
           <button key={v} onClick={() => setView(v)} className={`px-2.5 py-1 rounded-[3px] uppercase tracking-[0.1em] ${view === v ? "bg-navy-3 text-ink" : "text-ink-3 hover:text-ink-2"}`}>{v}</button>
         ))}
         <span className="ml-auto text-ink-3 hidden md:inline">market → opportunities → setup → execution → risk</span>
