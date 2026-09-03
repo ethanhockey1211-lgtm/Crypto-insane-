@@ -21,6 +21,8 @@ public class MarketStateEngineTests
         public void OnCandleClosed(in Candle candle) { lock (Candles) Candles.Add(candle); }
         public void OnFeedStatus(FeedStatusChange change) { lock (Statuses) Statuses.Add(change); }
         public void OnGap(DataGap gap) { lock (Gaps) Gaps.Add(gap); }
+        public List<Symbol> HistoryApplied { get; } = new();
+        public void OnHistoryApplied(Symbol symbol) { lock (HistoryApplied) HistoryApplied.Add(symbol); }
     }
 
     private static async Task WaitUntil(Func<bool> cond, string what)
@@ -71,8 +73,9 @@ public class MarketStateEngineTests
 
             // Commands run on the engine thread.
             var ran = false;
-            await engine.PostAsync((e, _) => ran = e.Get(new Symbol("BTC-USD")) is not null, CancellationToken.None);
+            await engine.PostAsync((e, _) => { ran = e.Get(new Symbol("BTC-USD")) is not null; e.NotifyHistoryApplied(new Symbol("BTC-USD")); }, CancellationToken.None);
             Assert.True(ran);
+            Assert.Equal(["BTC-USD"], observer.HistoryApplied.Select(s => s.Value));
             Assert.Equal(0, engine.EngineErrors);
         }
         finally
@@ -107,5 +110,6 @@ public class MarketStateEngineTests
         public void OnCandleClosed(in Candle candle) { }
         public void OnFeedStatus(FeedStatusChange change) { }
         public void OnGap(DataGap gap) { }
+        public void OnHistoryApplied(Symbol symbol) { }
     }
 }

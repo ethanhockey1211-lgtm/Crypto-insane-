@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\TradingScanner.Core\TradingScanner.Core.csproj" />
     <ProjectReference Include="..\TradingScanner.MarketData\TradingScanner.MarketData.csproj" />
+    <ProjectReference Include="..\TradingScanner.Analytics\TradingScanner.Analytics.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

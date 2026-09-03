@@ -53,6 +53,7 @@ public sealed class MarketBroadcaster : BackgroundService, IMarketEventObserver
     public void OnCandleClosed(in Candle candle) => _events.Writer.TryWrite(candle);
     public void OnFeedStatus(FeedStatusChange change) => _events.Writer.TryWrite(change);
     public void OnGap(DataGap gap) => _events.Writer.TryWrite(gap);
+    public void OnHistoryApplied(Symbol symbol) { }
 
     public FeedStatusDto BuildFeedStatus()
     {

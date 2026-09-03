@@ -56,6 +56,7 @@ public sealed class HistoryWarmUp
                     if (state is null) return;
                     foreach (var (tf, candles) in loaded) state.ApplyHistory(tf, candles);
                     state.RebuildDerived(closed);
+                    engine.NotifyHistoryApplied(symbol);
                 }, ct).ConfigureAwait(false);
                 var n = Interlocked.Increment(ref done);
                 if (n % 25 == 0 || n == symbols.Count) _logger.LogInformation("History warm-up {Done}/{Total}", n, symbols.Count);

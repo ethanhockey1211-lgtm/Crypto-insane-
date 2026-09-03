@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
 using TradingScanner.Api.Contracts;
 using TradingScanner.Api.Services;
+using TradingScanner.Analytics;
 using TradingScanner.Core;
 using TradingScanner.Core.Market;
 using TradingScanner.MarketData.Engine;
@@ -44,6 +45,16 @@ public static class MarketEndpoints
             var candles = new CandleDto[snap.Closed.Length];
             for (var i = 0; i < candles.Length; i++) candles[i] = CandleDto.From(snap.Closed[i]);
             return TypedResults.Ok(new CandlesResponse(sym.Value, timeframe.Label(), candles, snap.Forming is { } f ? CandleDto.From(f) : null));
+        });
+
+        market.MapGet("/{symbol}/analytics", Results<Ok<AnalyticsProjection>, NotFound> (string symbol, IMarketStateReader reader, IAnalyticsReader analytics, TimeProvider time) =>
+        {
+            if (!TryParseSymbol(symbol, out var sym)) return TypedResults.NotFound();
+            var snapshot = analytics.GetSnapshot(sym);
+            if (snapshot is null) return TypedResults.NotFound();
+            var quote = reader.GetQuote(sym);
+            var price = quote is not null ? (double)quote.Price : snapshot.Momentum?.LastClose ?? snapshot.Timeframes.FirstOrDefault()?.Close ?? 0d;
+            return TypedResults.Ok(snapshot.Project(price, time.GetUtcNow()));
         });
 
         var system = app.MapGroup("/api/system").RequireRateLimiting("api");

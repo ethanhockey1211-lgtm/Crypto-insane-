@@ -12,4 +12,6 @@ public interface IMarketEventObserver
     void OnCandleClosed(in Candle candle);
     void OnFeedStatus(FeedStatusChange change);
     void OnGap(DataGap gap);
+    /// <summary>REST history was merged into the symbol's series; derived state must be rebuilt from the series.</summary>
+    void OnHistoryApplied(Symbol symbol);
 }

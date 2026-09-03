@@ -135,6 +135,29 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
     }
 
     [Fact]
+    public async Task Analytics_endpoint_projects_indicators_at_the_live_price()
+    {
+        var client = await ClientAsync();
+        var resp = await client.GetAsync("/api/market/BTC-USD/analytics");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var root = doc.RootElement;
+        Assert.Equal("BTC-USD", root.GetProperty("symbol").GetProperty("value").GetString());
+        Assert.Equal(49997, root.GetProperty("price").GetDouble());
+        var tfs = root.GetProperty("timeframes").EnumerateArray().ToList();
+        Assert.Contains(tfs, t => t.GetProperty("timeframe").GetString() == "M1");
+        Assert.Equal("Unknown", tfs[0].GetProperty("alignment").GetString());
+        Assert.Equal(JsonValueKind.Null, tfs[0].GetProperty("ema9").ValueKind); // two closed bars: not enough history, never invented
+        var momentum = root.GetProperty("momentum");
+        Assert.NotEqual(JsonValueKind.Null, momentum.GetProperty("r1m").ValueKind);
+        Assert.Equal(JsonValueKind.Null, momentum.GetProperty("r1h").ValueKind);
+        Assert.True(root.GetProperty("vwap").GetProperty("above").ValueKind is JsonValueKind.True or JsonValueKind.False);
+
+        var missing = await client.GetAsync("/api/market/XRP-USD/analytics");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
     public async Task Feed_status_health_and_metrics_reflect_the_live_provider()
     {
         var client = await ClientAsync();

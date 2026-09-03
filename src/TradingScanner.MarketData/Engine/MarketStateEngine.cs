@@ -79,6 +79,12 @@ public sealed class MarketStateEngine : BackgroundService, IMarketStateReader
         foreach (var s in symbols) _symbols.GetOrAdd(s, static (sym, o) => new SymbolState(sym, o), _options);
     }
 
+    /// <summary>Engine-thread only: tell observers a symbol's series were rebuilt from history.</summary>
+    public void NotifyHistoryApplied(Symbol symbol)
+    {
+        foreach (var o in _observers) o.OnHistoryApplied(symbol);
+    }
+
     /// <summary>Run <paramref name="work"/> on the engine thread (used by history warm-up to mutate series safely).</summary>
     public Task PostAsync(Action<MarketStateEngine, List<Candle>> work, CancellationToken ct)
     {

@@ -12,8 +12,9 @@ Nothing here predicts prices. No setup is ever presented as certain. Real-money 
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Market data: Coinbase Exchange WebSocket adapter, universe selection, candle engine (1m→4h), REST warm-up, reconnect/gap handling, API + SignalR stream | Implemented, tested |
-| 2 | Analytics: EMA/VWAP/RSI/ATR/relative volume/momentum | Next |
-| 3–10 | Structure, scanner, dashboard, alerts, paper trading, signal analytics, backtesting, AI explanation | Planned |
+| 2 | Analytics: EMA 9/20/50/200, Wilder RSI/ATR, session VWAP with deviation bands, relative volume, realized volatility, multi-horizon momentum with acceleration, EMA alignment/cross tracking; rebuild-from-history; `GET /api/market/{symbol}/analytics` | Implemented, tested |
+| 3 | Market structure: swings, support/resistance, breakout/retest/failure state machines | Next |
+| 4–10 | Scanner, dashboard, alerts, paper trading, signal analytics, backtesting, AI explanation | Planned |
 
 ## Run the backend
 
@@ -32,6 +33,7 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | `GET /api/market/symbols` | Universe with latest quote, provenance (provider, exchange, exchange time, age, stale flag), 24h stats |
 | `GET /api/market/{symbol}/quote` | One symbol |
 | `GET /api/market/{symbol}/candles?tf=1m&limit=300` | Closed candles + forming bar. `tf` ∈ 1m,3m,5m,15m,30m,1h,4h |
+| `GET /api/market/{symbol}/analytics` | Per-timeframe indicators as of the last closed bar, plus momentum and VWAP deviation projected at the live price |
 | `GET /api/system/feed` | Provider status per connection, last event age, universe size |
 | `GET /api/system/metrics` | Ingestion counters: messages, reconnects, gaps, latency, channel depth |
 | `GET /health/live`, `GET /health/ready` | Liveness / readiness (ready = feed connected and fresh) |

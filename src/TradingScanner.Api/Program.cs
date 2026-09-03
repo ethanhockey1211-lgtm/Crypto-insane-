@@ -5,6 +5,8 @@ using TradingScanner.Api.Endpoints;
 using TradingScanner.Api.Health;
 using TradingScanner.Api.Hubs;
 using TradingScanner.Api.Services;
+using System.Text.Json.Serialization;
+using TradingScanner.Analytics;
 using TradingScanner.Core.Providers;
 using TradingScanner.MarketData;
 
@@ -17,12 +19,15 @@ if (!builder.Environment.IsDevelopment())
 }
 
 builder.Services.AddMarketData(builder.Configuration);
+builder.Services.AddAnalytics(builder.Configuration);
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddSingleton<MarketBroadcaster>();
 builder.Services.AddSingleton<IMarketEventObserver>(sp => sp.GetRequiredService<MarketBroadcaster>());
 builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<MarketBroadcaster>());
 
-builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 64 * 1024);
+builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 64 * 1024)
+    .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:3000"];
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
