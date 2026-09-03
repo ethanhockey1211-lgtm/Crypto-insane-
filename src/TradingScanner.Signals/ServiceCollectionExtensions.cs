@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using TradingScanner.Signals.Alerts;
+using TradingScanner.Signals.Paper;
 using TradingScanner.Signals.Scanner;
 
 namespace TradingScanner.Signals;
@@ -22,6 +23,10 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IAlertRepository, InMemoryAlertRepository>();
         services.AddSingleton<AlertService>();
         services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<AlertService>());
+        services.Configure<PaperOptions>(configuration.GetSection("Paper"));
+        services.TryAddSingleton<IPaperRepository, InMemoryPaperRepository>();
+        services.AddSingleton<PaperEngine>();
+        services.AddHostedService<PaperPriceFeed>();
         return services;
     }
 }

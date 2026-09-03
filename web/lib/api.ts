@@ -1,4 +1,4 @@
-import type { AlertEvent, AlertFieldInfo, AlertRule, AlertRuleRequest, CandlesResponse, FeedStatus, Opportunity, ScannerStream, TapeEvent } from "./types";
+import type { AlertEvent, AlertFieldInfo, AlertRule, AlertRuleRequest, CandlesResponse, FeedStatus, Opportunity, PaperAccount, PaperAccountView, PaperOrder, PaperPosition, PaperPositionView, PaperStats, PlaceOrderRequest, ScannerStream, TapeEvent } from "./types";
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5080").replace(/\/$/, "");
 
@@ -31,5 +31,15 @@ export const api = {
     create: (r: AlertRuleRequest) => send<AlertRule>("POST", "/api/alerts", r),
     update: (id: string, r: AlertRuleRequest) => send<AlertRule>("PUT", `/api/alerts/${id}`, r),
     remove: (id: string) => send<void>("DELETE", `/api/alerts/${id}`),
+  },
+  paper: {
+    account: () => get<PaperAccountView>("/api/paper/account"),
+    reset: (startingBalance: number) => send<PaperAccount>("POST", "/api/paper/account/reset", { startingBalance }),
+    place: (r: PlaceOrderRequest) => send<PaperOrder>("POST", "/api/paper/orders", r),
+    orders: () => get<PaperOrder[]>("/api/paper/orders"),
+    cancel: (id: string) => send<void>("DELETE", `/api/paper/orders/${id}`),
+    positions: () => get<PaperPositionView[]>("/api/paper/positions"),
+    trades: () => get<PaperPosition[]>("/api/paper/trades"),
+    stats: () => get<PaperStats>("/api/paper/stats"),
   },
 };

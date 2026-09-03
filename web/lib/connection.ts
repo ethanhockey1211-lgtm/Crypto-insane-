@@ -24,6 +24,7 @@ export async function startConnection(): Promise<void> {
   connection.on("feed", (f: FeedStatus) => store.setFeed(f));
   connection.on("candle", (c: CandleClosed) => store.emitCandle(c));
   connection.on("alert", (a: AlertEvent) => { store.pushAlerts([a]); notify(a); });
+  connection.on("paper", () => store.bumpPaper());
   connection.onreconnecting(() => store.setHub("reconnecting"));
   connection.onreconnected(() => { store.setHub("connected"); void refresh(); });
   connection.onclose(() => { store.setHub("disconnected"); retryStart(); });

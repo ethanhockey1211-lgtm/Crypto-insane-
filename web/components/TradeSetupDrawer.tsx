@@ -142,7 +142,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
               <p className="text-[10.5px] text-ink-3 mt-2">Scoring config v{opp.breakdown.configVersion}. Scores rank evidence; they are not probabilities and nothing here is guaranteed.</p>
             </Section>
             <Section title="Position">
-              <PositionCalculator plan={plan} price={price} />
+              <PositionCalculator plan={plan} price={price} symbol={symbol} />
             </Section>
           </>
         )}

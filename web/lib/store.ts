@@ -24,6 +24,8 @@ class MarketStore {
   private headerListeners = new Set<Listener>();
   private tapeListeners = new Set<Listener>();
   private alertListeners = new Set<Listener>();
+  private paperListeners = new Set<Listener>();
+  private paperVersion = 0;
   private candleListeners = new Map<string, Set<(c: CandleClosed) => void>>();
 
   private dirtySymbols = new Set<string>();
@@ -41,6 +43,9 @@ class MarketStore {
   getHub = () => this.hub;
   getTape = () => this.tape;
   getAlerts = () => this.alerts;
+  getPaperVersion = () => this.paperVersion;
+  /** A fill happened server-side; views re-fetch paper state. */
+  bumpPaper(): void { this.paperVersion++; for (const l of this.paperListeners) l(); }
   getCycle = () => this.cycle;
 
   // ---- mutations ----
@@ -111,6 +116,7 @@ class MarketStore {
   subscribeHeader = (l: Listener) => { this.headerListeners.add(l); return () => { this.headerListeners.delete(l); }; };
   subscribeTape = (l: Listener) => { this.tapeListeners.add(l); return () => { this.tapeListeners.delete(l); }; };
   subscribeAlerts = (l: Listener) => { this.alertListeners.add(l); return () => { this.alertListeners.delete(l); }; };
+  subscribePaper = (l: Listener) => { this.paperListeners.add(l); return () => { this.paperListeners.delete(l); }; };
   subscribeCandles(symbol: string, tf: string, l: (c: CandleClosed) => void): () => void {
     const key = `${symbol}:${tf}`;
     let set = this.candleListeners.get(key);
@@ -156,4 +162,5 @@ export const useFeed = () => useSyncExternalStore(store.subscribeHeader, store.g
 export const useHub = () => useSyncExternalStore(store.subscribeHeader, store.getHub, () => "connecting" as const);
 export const useTape = () => useSyncExternalStore(store.subscribeTape, store.getTape, () => EMPTY as TapeEvent[]);
 export const useAlerts = () => useSyncExternalStore(store.subscribeAlerts, store.getAlerts, () => EMPTY as AlertEvent[]);
+export const usePaperVersion = () => useSyncExternalStore(store.subscribePaper, store.getPaperVersion, () => 0);
 export const useCycle = () => useSyncExternalStore(store.subscribeHeader, store.getCycle, () => ({ at: null, ms: 0 }));

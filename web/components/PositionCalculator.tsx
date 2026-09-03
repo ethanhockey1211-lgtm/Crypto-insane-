@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { sizePosition } from "@/lib/position";
+import { api } from "@/lib/api";
 import { fmtMoney, fmtPct, fmtPrice } from "@/lib/format";
 import type { TradePlan } from "@/lib/types";
 
@@ -21,7 +22,8 @@ function Num({ label, value, onChange, step = "any", suffix }: { label: string; 
   );
 }
 
-export function PositionCalculator({ plan, price }: { plan: TradePlan | null; price: number }) {
+export function PositionCalculator({ plan, price, symbol }: { plan: TradePlan | null; price: number; symbol?: string }) {
+  const [paperMsg, setPaperMsg] = useState<string | null>(null);
   const [d, setD] = useState<RiskDefaults>(DEFAULTS);
   const [entry, setEntry] = useState(price);
   const [stop, setStop] = useState(plan?.stop ?? price * 0.98);
@@ -67,7 +69,19 @@ export function PositionCalculator({ plan, price }: { plan: TradePlan | null; pr
             <dt className="text-ink-3">Fees</dt><dd className="num text-ink-2">{fmtMoney(r.fees)}</dd>
           </dl>
         )}
-        <p className="text-[10.5px] text-ink-3 mt-2">Sizes from your own inputs. Nothing here is a recommendation and no order is placed.</p>
+        {symbol && r.valid && (
+          <div className="mt-2 flex items-center gap-2">
+            <button className="text-[11px] px-2 py-1 bg-navy-3 rounded-[3px]" onClick={async () => {
+              setPaperMsg(null);
+              try {
+                const o = await api.paper.place({ symbol, side: "Buy", quantity: Number(r.quantity.toFixed(6)), notional: null, stopPrice: stop, takeProfitPrice: t1, note: "from setup card" });
+                setPaperMsg(`Paper buy filled: ${o.quantity} @ ${o.fillPrice} with stop ${stop} and take profit ${t1}.`);
+              } catch (e) { setPaperMsg(`Paper buy rejected: ${(e as Error).message}`); }
+            }}>Paper buy with bracket</button>
+            {paperMsg && <span className="text-[11px] text-ink-2">{paperMsg}</span>}
+          </div>
+        )}
+        <p className="text-[10.5px] text-ink-3 mt-2">Sizes from your own inputs. Paper orders are simulated on the scanner server; nothing is sent to an exchange.</p>
       </div>
     </div>
   );

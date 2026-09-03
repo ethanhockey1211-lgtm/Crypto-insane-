@@ -17,7 +17,8 @@ Nothing here predicts prices. No setup is ever presented as certain. Real-money 
 | 4 | Scanner: BTC/ETH state, breadth and risk regime; anti-FOMO overextension assessment with DO NOT CHASE; setup classification (Breakout, Breakout+Retest, VWAP Reclaim, Support Bounce, Momentum Continuation, Range Breakout, Trend Pullback, Reversal, Volume/Volatility Expansion); configurable 0–100 score with evidence per component and penalty; trade plans with entry zone, trigger, invalidation, stop, three resistance-capped targets and R:R; why/invalidation/risk explanations; score-change reasons; BTC correlation; ranked universe every second over SignalR; market tape | Implemented, tested |
 | 5 | Dashboard: Next.js 15 / React 19 / TypeScript / Tailwind 4 / Lightweight Charts 5. Market regime header, ranked scanner with per-row score ledger (component segments + penalty cut), setup drawer with chart and plan lines, plan / why / invalidation / risks, momentum, levels, score breakdown, position calculator, watchlist (browser-persisted), heatmap, market tape, LIVE DATA INTERRUPTED banner. Store lives outside React with per-symbol subscriptions and animation-frame batching | Implemented |
 | 6 | Alerts: compound conditions over price, score, momentum, volume, RSI, VWAP relation, breakout state, setup, BTC trend/dump, regime and more; cross-above/below operators; hold time so wicks never fire; edge-triggered with optional repeat and cooldown; per-symbol or universe-wide rules; browser notifications and https webhooks (Discord-compatible body plus the full event); `/api/alerts` CRUD, `/api/alerts/events`, SignalR `alert`; alert manager view | Implemented, tested |
-| 7–10 | Paper trading, signal analytics, backtesting, AI explanation | Planned |
+| 7 | Paper trading: market buy/sell against the live quote with slippage and fees, bracket stop and take-profit (one cancels the other) evaluated every cycle and never on stale prices, partial exits, MFE/MAE, R-multiple from the initial stop, score / setup / regime captured at entry, account equity and stats by setup and regime; `/api/paper/*`; SignalR `paper`; paper view and “Paper buy with bracket” from the setup card. In memory unless a database is configured | Implemented, tested |
+| 8–10 | Signal analytics, backtesting, AI explanation | Planned |
 
 ## Run the backend
 
@@ -43,6 +44,7 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | `GET /api/scanner/market` | Regime, BTC/ETH state, breadth, notes |
 | `GET /api/scanner/tape?limit=100` | Recent what's-moving-now events |
 | `GET/POST/PUT/DELETE /api/alerts`, `GET /api/alerts/events`, `GET /api/alerts/fields` | Alert rules and fired events. Rules are in memory unless a database is configured |
+| `GET /api/paper/account`, `POST /api/paper/orders`, `GET /api/paper/positions`, `/orders`, `/trades`, `/stats`, `POST /api/paper/account/reset` | Simulated execution. There is no real-money order path anywhere in the codebase |
 | `GET /api/system/feed` | Provider status per connection, last event age, universe size |
 | `GET /api/system/metrics` | Ingestion counters: messages, reconnects, gaps, latency, channel depth |
 | `GET /health/live`, `GET /health/ready` | Liveness / readiness (ready = feed connected and fresh) |

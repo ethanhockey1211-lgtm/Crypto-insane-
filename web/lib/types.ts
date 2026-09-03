@@ -151,3 +151,20 @@ export interface AlertRuleRequest {
 }
 export interface AlertEvent { id: string; ruleId: string; ruleName: string; at: string; symbol: string; message: string; values: Record<string, string> }
 export interface AlertFieldInfo { name: string; kind: "number" | "boolean" | "text" }
+
+export interface PaperAccount { id: string; name: string; startingBalance: number; cash: number; feeBps: number; slippageBps: number; createdAt: string }
+export interface PaperAccountView { account: PaperAccount; equity: number; openValue: number; unrealizedPnl: number; realizedPnl: number; openPositions: number }
+export interface PaperOrder {
+  id: string; accountId: string; symbol: string; side: "Buy" | "Sell"; type: "Market" | "Stop" | "TakeProfit"; quantity: number; triggerPrice: number | null;
+  status: "Open" | "Filled" | "Cancelled" | "Rejected"; createdAt: string; filledAt: string | null; fillPrice: number | null; fees: number; slippage: number; positionId: string | null; note: string | null;
+}
+export interface PaperPosition {
+  id: string; symbol: string; status: "Open" | "Closed"; quantity: number; avgEntry: number; openedAt: string; closedAt: string | null;
+  realizedPnl: number; fees: number; maxFavorablePrice: number; maxAdversePrice: number; initialStop: number | null; initialRiskUsd: number | null;
+  scoreAtEntry: number | null; setupAtEntry: string | null; regimeAtEntry: string | null; stopOrderId: string | null; takeProfitOrderId: string | null; exitReason: string | null;
+  mfePct: number; maePct: number; rMultiple: number | null;
+}
+export interface PaperPositionView { position: PaperPosition; lastPrice: number | null; unrealizedPnl: number | null; marketValue: number | null }
+export interface PaperBucket { key: string; trades: number; winRate: number; totalPnl: number; avgR: number | null }
+export interface PaperStats { trades: number; wins: number; winRate: number; totalPnl: number; grossProfit: number; grossLoss: number; profitFactor: number | null; avgPnl: number; avgR: number | null; expectancy: number | null; bySetup: PaperBucket[]; byRegime: PaperBucket[] }
+export interface PlaceOrderRequest { symbol: string; side: "Buy" | "Sell"; quantity: number | null; notional: number | null; stopPrice: number | null; takeProfitPrice: number | null; note: string | null }
