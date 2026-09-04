@@ -7,7 +7,7 @@ import type { PerformanceBucket, PerformanceReport, SignalWithOutcome } from "@/
 function pct(v: number | null | undefined, d = 0) { return v == null ? "—" : `${(v * 100).toFixed(d)}%`; }
 function num(v: number | null | undefined, d = 2) { return v == null ? "—" : v.toFixed(d); }
 
-function BucketTable({ title, rows, labelFn }: { title: string; rows: PerformanceBucket[]; labelFn?: (k: string) => string }) {
+export function BucketTable({ title, rows, labelFn }: { title: string; rows: PerformanceBucket[]; labelFn?: (k: string) => string }) {
   return (
     <div className="px-3 py-2 border-b border-line">
       <h3 className="eyebrow mb-1">{title}</h3>

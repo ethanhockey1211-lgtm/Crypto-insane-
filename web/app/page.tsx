@@ -11,8 +11,9 @@ import { Watchlist, useWatchlist } from "@/components/Watchlist";
 import { AlertManager } from "@/components/AlertManager";
 import { PaperTrading } from "@/components/PaperTrading";
 import { Performance } from "@/components/Performance";
+import { Backtest } from "@/components/Backtest";
 
-type View = "scanner" | "heatmap" | "watchlist" | "alerts" | "paper" | "performance" | "tape";
+type View = "scanner" | "heatmap" | "watchlist" | "alerts" | "paper" | "performance" | "backtest" | "tape";
 
 export default function Page() {
   const [view, setView] = useState<View>("scanner");
@@ -30,6 +31,7 @@ export default function Page() {
     : view === "alerts" ? <AlertManager onOpen={open} presetSymbol={active} />
     : view === "paper" ? <PaperTrading onOpen={open} />
     : view === "performance" ? <Performance onOpen={open} />
+    : view === "backtest" ? <Backtest onOpen={open} />
     : <MarketTape onOpen={open} />;
 
   return (
@@ -37,7 +39,7 @@ export default function Page() {
       <FeedBanner />
       <MarketHeader />
       <nav className="flex items-center gap-1 text-[11px] px-1" aria-label="Views">
-        {(["scanner", "heatmap", "watchlist", "alerts", "paper", "performance", "tape"] as View[]).map((v) => (
+        {(["scanner", "heatmap", "watchlist", "alerts", "paper", "performance", "backtest", "tape"] as View[]).map((v) => (
           <button key={v} onClick={() => setView(v)} className={`px-2.5 py-1 rounded-[3px] uppercase tracking-[0.1em] ${view === v ? "bg-navy-3 text-ink" : "text-ink-3 hover:text-ink-2"}`}>{v}</button>
         ))}
         <span className="ml-auto text-ink-3 hidden md:inline">market → opportunities → setup → execution → risk</span>

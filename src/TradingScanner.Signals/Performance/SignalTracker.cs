@@ -110,6 +110,43 @@ public sealed class SignalTracker
         return oc with { Ret5m = r5, Ret15m = r15, Ret30m = r30, Ret1h = r60, Mfe = mfe, Mae = mae, StopHit = stopHit, Target1Hit = t1, Target2Hit = t2, Target3Hit = t3, FirstEvent = first, R = r, LastPrice = at, Complete = complete };
     }
 
+    /// <summary>
+    /// Bar-based outcome update for replay: the stop is tested against the bar's low BEFORE targets are tested
+    /// against its high, so a bar that touches both counts as a stop (pessimistic). Returns come from the close.
+    /// </summary>
+    public static SignalOutcome AdvanceBar(SignalWithOutcome item, double high, double low, double close, DateTimeOffset closeTime, TimeSpan horizon)
+    {
+        var s = item.Signal;
+        var oc = item.Outcome;
+        if (close <= 0 || s.Price <= 0 || oc.Complete || closeTime <= s.At) return oc;
+        var elapsed = closeTime - s.At;
+        var ret = close / s.Price - 1;
+        var mfe = Math.Max(oc.Mfe, high / s.Price - 1);
+        var mae = Math.Min(oc.Mae, low / s.Price - 1);
+
+        var stopHit = oc.StopHit; var t1 = oc.Target1Hit; var t2 = oc.Target2Hit; var t3 = oc.Target3Hit; var first = oc.FirstEvent;
+        if (s.Stop is { } stop && stopHit == false && low <= stop) { stopHit = true; if (first == "none") first = "stop"; }
+        if (s.Target1 is { } tp1 && t1 == false && high >= tp1) { t1 = true; if (first == "none") first = "t1"; }
+        if (s.Target2 is { } tp2 && t2 == false && high >= tp2) { t2 = true; if (first == "none") first = "t2"; }
+        if (s.Target3 is { } tp3 && t3 == false && high >= tp3) { t3 = true; if (first == "none") first = "t3"; }
+
+        var r5 = oc.Ret5m ?? (elapsed >= TimeSpan.FromMinutes(5) ? ret : null);
+        var r15 = oc.Ret15m ?? (elapsed >= TimeSpan.FromMinutes(15) ? ret : null);
+        var r30 = oc.Ret30m ?? (elapsed >= TimeSpan.FromMinutes(30) ? ret : null);
+        var r60 = oc.Ret1h ?? (elapsed >= TimeSpan.FromMinutes(60) ? ret : null);
+        var complete = elapsed >= horizon;
+
+        double? r = oc.R;
+        if (s.Stop is { } st && s.Entry is { } entry && entry > st)
+        {
+            var riskPerUnit = entry - st;
+            if (first == "stop") r = -1;
+            else if (first is "t1" or "t2" or "t3") r = s.RewardRatio1 ?? (s.Target1 is { } t ? (t - entry) / riskPerUnit : null);
+            else if (complete) r = (close - entry) / riskPerUnit;
+        }
+        return oc with { Ret5m = r5, Ret15m = r15, Ret30m = r30, Ret1h = r60, Mfe = mfe, Mae = mae, StopHit = stopHit, Target1Hit = t1, Target2Hit = t2, Target3Hit = t3, FirstEvent = first, R = r, LastPrice = closeTime, Complete = complete };
+    }
+
     public static PerformanceReport Report(IReadOnlyList<SignalWithOutcome> items, DateTimeOffset at, int configVersion)
     {
         var overall = Bucket("all", items);

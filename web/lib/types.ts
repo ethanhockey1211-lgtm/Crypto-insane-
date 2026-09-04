@@ -177,3 +177,6 @@ export interface PerformanceReport { at: string; overall: PerformanceBucket; byS
 export interface SignalRecord { id: string; symbol: string; at: string; setup: string; confidence: string; score: number; price: number; entry: number | null; stop: number | null; target1: number | null; rewardRatio1: number | null; regime: string; btcTrend: string | null; doNotChase: boolean; configVersion: number }
 export interface SignalOutcome { ret5m: number | null; ret15m: number | null; ret30m: number | null; ret1h: number | null; mfe: number; mae: number; stopHit: boolean | null; target1Hit: boolean | null; firstEvent: string; r: number | null; lastPrice: string; complete: boolean }
 export interface SignalWithOutcome { signal: SignalRecord; outcome: SignalOutcome }
+
+export interface BacktestApiRequest { symbols: string[]; days: number; feeBps: number; slippageBps: number; spreadBps: number; recordThreshold: number; includeBtc: boolean }
+export interface BacktestResult { signals: SignalWithOutcome[]; gross: PerformanceReport; net: PerformanceReport; barsProcessed: number; evaluations: number; duration: string; notes: string[] }

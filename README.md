@@ -18,7 +18,9 @@ Nothing here predicts prices. No setup is ever presented as certain. Real-money 
 | 5 | Dashboard: Next.js 15 / React 19 / TypeScript / Tailwind 4 / Lightweight Charts 5. Market regime header, ranked scanner with per-row score ledger (component segments + penalty cut), setup drawer with chart and plan lines, plan / why / invalidation / risks, momentum, levels, score breakdown, position calculator, watchlist (browser-persisted), heatmap, market tape, LIVE DATA INTERRUPTED banner. Store lives outside React with per-symbol subscriptions and animation-frame batching | Implemented |
 | 6 | Alerts: compound conditions over price, score, momentum, volume, RSI, VWAP relation, breakout state, setup, BTC trend/dump, regime and more; cross-above/below operators; hold time so wicks never fire; edge-triggered with optional repeat and cooldown; per-symbol or universe-wide rules; browser notifications and https webhooks (Discord-compatible body plus the full event); `/api/alerts` CRUD, `/api/alerts/events`, SignalR `alert`; alert manager view | Implemented, tested |
 | 7 | Paper trading: market buy/sell against the live quote with slippage and fees, bracket stop and take-profit (one cancels the other) evaluated every cycle and never on stale prices, partial exits, MFE/MAE, R-multiple from the initial stop, score / setup / regime captured at entry, account equity and stats by setup and regime; `/api/paper/*`; SignalR `paper`; paper view and “Paper buy with bracket” from the setup card. In memory unless a database is configured | Implemented, tested |
-| 8–10 | Signal analytics, backtesting, AI explanation | Planned |
+| 8 | Signal performance: every setup scoring at or above the threshold is recorded once per symbol and setup within a dedupe window, whether traded or not, and followed for an hour: 5/15/30/60-minute returns, MFE/MAE, which plan level was hit first, outcome R; reports by score bucket, setup, regime, confidence, and coin with target-before-stop rate, stop rate, average R, expectancy, and profit factor; `/api/performance`, `/api/performance/signals`; performance view | Implemented, tested |
+| 9 | Backtesting: replays 1m history through the same analytics, breakout, evaluation, and outcome code as the live scanner (the per-symbol evaluation is one shared static function); bars fed in chronological close order across symbols, evaluation at every 5m close using only closed bars, entry at the next bar's open, stop tested before targets within a bar, fee/slippage/spread cost model applied to R; gross and net reports; `POST /api/backtest` (≤5 symbols, ≤14 days over the provider's REST history); backtest view. A test proves truncating future bars never changes earlier signals | Implemented, tested |
+| 10 | AI explanation | Planned |
 
 ## Run the backend
 
@@ -45,6 +47,8 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | `GET /api/scanner/tape?limit=100` | Recent what's-moving-now events |
 | `GET/POST/PUT/DELETE /api/alerts`, `GET /api/alerts/events`, `GET /api/alerts/fields` | Alert rules and fired events. Rules are in memory unless a database is configured |
 | `GET /api/paper/account`, `POST /api/paper/orders`, `GET /api/paper/positions`, `/orders`, `/trades`, `/stats`, `POST /api/paper/account/reset` | Simulated execution. There is no real-money order path anywhere in the codebase |
+| `GET /api/performance`, `GET /api/performance/signals?limit=&symbol=` | Signal outcome report and recent signals with outcomes |
+| `POST /api/backtest` | Replay a few symbols over recent history with cost assumptions; returns signals plus gross and net reports |
 | `GET /api/system/feed` | Provider status per connection, last event age, universe size |
 | `GET /api/system/metrics` | Ingestion counters: messages, reconnects, gaps, latency, channel depth |
 | `GET /health/live`, `GET /health/ready` | Liveness / readiness (ready = feed connected and fresh) |

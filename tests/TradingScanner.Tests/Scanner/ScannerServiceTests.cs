@@ -124,9 +124,9 @@ public class ScannerServiceTests
         var a = Enumerable.Range(0, 60).Select(i => Math.Sin(i)).ToArray();
         var b = a.Select(x => 2 * x + 1).ToArray();
         var c = a.Select(x => -x).ToArray();
-        Assert.Equal(1.0, ScannerService.Correlation(a, b)!.Value, 6);
-        Assert.Equal(-1.0, ScannerService.Correlation(a, c)!.Value, 6);
-        Assert.Null(ScannerService.Correlation(a, new double[5]));
-        Assert.Null(ScannerService.Correlation(a, Enumerable.Repeat(0.0, 60).ToArray()));
+        Assert.Equal(1.0, OpportunityEvaluator.Correlation(a, b)!.Value, 6);
+        Assert.Equal(-1.0, OpportunityEvaluator.Correlation(a, c)!.Value, 6);
+        Assert.Null(OpportunityEvaluator.Correlation(a, new double[5]));
+        Assert.Null(OpportunityEvaluator.Correlation(a, Enumerable.Repeat(0.0, 60).ToArray()));
     }
 }

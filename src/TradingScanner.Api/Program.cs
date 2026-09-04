@@ -29,6 +29,7 @@ builder.Services.AddSingleton<IMarketEventObserver>(sp => sp.GetRequiredService<
 builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<MarketBroadcaster>());
 
 builder.Services.AddHostedService<ScannerBroadcaster>();
+builder.Services.AddSingleton<TradingScanner.Backtest.IHistoricalCandleSource, TradingScanner.Api.Endpoints.ProviderCandleSource>();
 
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 64 * 1024)
     .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -72,6 +73,7 @@ app.MapMarketEndpoints();
 app.MapAlertEndpoints();
 app.MapPaperEndpoints();
 app.MapPerformanceEndpoints();
+app.MapBacktestEndpoints();
 app.MapHub<MarketHub>("/hubs/market");
 app.MapGet("/", () => Results.Redirect("/api/system/feed"));
 
