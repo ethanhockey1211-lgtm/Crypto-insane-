@@ -31,6 +31,16 @@ builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<Market
 builder.Services.AddHostedService<ScannerBroadcaster>();
 builder.Services.AddSingleton<TradingScanner.Backtest.IHistoricalCandleSource, TradingScanner.Api.Endpoints.ProviderCandleSource>();
 
+// AI explanation layer: only narrates engine output, enabled only when a key is configured (env ANTHROPIC_API_KEY or Anthropic:ApiKey).
+builder.Services.Configure<AnthropicOptions>(builder.Configuration.GetSection(AnthropicOptions.SectionName));
+builder.Services.AddSingleton<TradingScanner.Signals.Explain.IExplanationService>(sp =>
+{
+    var o = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AnthropicOptions>>().Value;
+    var key = string.IsNullOrWhiteSpace(o.ApiKey) ? Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") : o.ApiKey;
+    TradingScanner.Signals.Explain.IExplanationModel? model = string.IsNullOrWhiteSpace(key) ? null : new AnthropicExplanationModel(o with { ApiKey = key }, sp.GetRequiredService<ILogger<AnthropicExplanationModel>>());
+    return new TradingScanner.Signals.Explain.ExplanationService(model, sp.GetRequiredService<TimeProvider>());
+});
+
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 64 * 1024)
     .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
@@ -74,6 +84,7 @@ app.MapAlertEndpoints();
 app.MapPaperEndpoints();
 app.MapPerformanceEndpoints();
 app.MapBacktestEndpoints();
+app.MapExplainEndpoints();
 app.MapHub<MarketHub>("/hubs/market");
 app.MapGet("/", () => Results.Redirect("/api/system/feed"));
 

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useRow } from "@/lib/store";
 import { fmtAge, fmtPct, fmtPrice, fmtVolume, fmtX, setupLabel } from "@/lib/format";
-import type { Opportunity } from "@/lib/types";
+import type { Explanation, Opportunity } from "@/lib/types";
 import { PriceChart } from "./PriceChart";
 import { MomentumPanel } from "./MomentumPanel";
 import { PositionCalculator } from "./PositionCalculator";
@@ -25,6 +25,13 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
   const row = useRow(symbol);
   const [opp, setOpp] = useState<Opportunity | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ai, setAi] = useState<{ loading: boolean; result: Explanation | null; error: string | null }>({ loading: false, result: null, error: null });
+  useEffect(() => { setAi({ loading: false, result: null, error: null }); }, [symbol]);
+  const explain = async () => {
+    setAi({ loading: true, result: null, error: null });
+    try { setAi({ loading: false, result: await api.explain(symbol), error: null }); }
+    catch (e) { setAi({ loading: false, result: null, error: (e as Error).message }); }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -96,6 +103,25 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
             </Section>
             <Section title="What invalidates this">
               <p className="text-[12px]">{opp.invalidation}</p>
+            </Section>
+            <Section title="Analyst narrative">
+              {!ai.result && (
+                <div className="flex items-center gap-3">
+                  <button className="text-[11px] px-2 py-1 bg-navy-3 rounded-[3px] disabled:opacity-50" disabled={ai.loading} onClick={explain}>{ai.loading ? "Writing…" : "Explain with AI"}</button>
+                  <span className="text-[11px] text-ink-3">The model only narrates the numbers above; it computes nothing.</span>
+                </div>
+              )}
+              {ai.error && <p className="warn text-[11.5px] mt-1">{ai.error}</p>}
+              {ai.result && (
+                <div className="text-[12px] space-y-2">
+                  <p>{ai.result.summary}</p>
+                  {ai.result.why.length > 0 && <ul className="space-y-0.5">{ai.result.why.map((w, i) => <li key={i} className="flex gap-2"><span className="text-accent">›</span><span>{w}</span></li>)}</ul>}
+                  {ai.result.invalidation.length > 0 && <p className="text-ink-2"><span className="eyebrow mr-2">Invalidation</span>{ai.result.invalidation.join(" · ")}</p>}
+                  {ai.result.risks.length > 0 && <p className="text-ink-2"><span className="eyebrow mr-2">Risks</span>{ai.result.risks.join(" · ")}</p>}
+                  {ai.result.appearsExtended != null && <p className={ai.result.appearsExtended ? "warn" : "text-ink-2"}>{ai.result.appearsExtended ? "The model reads this move as already extended." : "The model does not read this move as extended."}</p>}
+                  <p className="text-[10.5px] text-ink-3">{ai.result.model} · {ai.result.disclaimer} <button className="underline" onClick={explain}>refresh</button></p>
+                </div>
+              )}
             </Section>
             {opp.risks.length > 0 && (
               <Section title="Risks">

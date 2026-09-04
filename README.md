@@ -20,7 +20,7 @@ Nothing here predicts prices. No setup is ever presented as certain. Real-money 
 | 7 | Paper trading: market buy/sell against the live quote with slippage and fees, bracket stop and take-profit (one cancels the other) evaluated every cycle and never on stale prices, partial exits, MFE/MAE, R-multiple from the initial stop, score / setup / regime captured at entry, account equity and stats by setup and regime; `/api/paper/*`; SignalR `paper`; paper view and “Paper buy with bracket” from the setup card. In memory unless a database is configured | Implemented, tested |
 | 8 | Signal performance: every setup scoring at or above the threshold is recorded once per symbol and setup within a dedupe window, whether traded or not, and followed for an hour: 5/15/30/60-minute returns, MFE/MAE, which plan level was hit first, outcome R; reports by score bucket, setup, regime, confidence, and coin with target-before-stop rate, stop rate, average R, expectancy, and profit factor; `/api/performance`, `/api/performance/signals`; performance view | Implemented, tested |
 | 9 | Backtesting: replays 1m history through the same analytics, breakout, evaluation, and outcome code as the live scanner (the per-symbol evaluation is one shared static function); bars fed in chronological close order across symbols, evaluation at every 5m close using only closed bars, entry at the next bar's open, stop tested before targets within a bar, fee/slippage/spread cost model applied to R; gross and net reports; `POST /api/backtest` (≤5 symbols, ≤14 days over the provider's REST history); backtest view. A test proves truncating future bars never changes earlier signals | Implemented, tested |
-| 10 | AI explanation | Planned |
+| 10 | AI explanation: the deterministic engine's structured output (setup, score components and penalties with evidence, plan, overextension, metrics, market context) is sent as JSON to Claude, which is instructed to use only those numbers, never invent values, and never call anything certain; response parsed into summary / why / invalidation / risks / appears-extended; cached per symbol; enabled only when `ANTHROPIC_API_KEY` is set on the API server; `POST /api/scanner/{symbol}/explain`; “Explain with AI” in the setup card | Implemented, tested |
 
 ## Run the backend
 
@@ -49,6 +49,7 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | `GET /api/paper/account`, `POST /api/paper/orders`, `GET /api/paper/positions`, `/orders`, `/trades`, `/stats`, `POST /api/paper/account/reset` | Simulated execution. There is no real-money order path anywhere in the codebase |
 | `GET /api/performance`, `GET /api/performance/signals?limit=&symbol=` | Signal outcome report and recent signals with outcomes |
 | `POST /api/backtest` | Replay a few symbols over recent history with cost assumptions; returns signals plus gross and net reports |
+| `POST /api/scanner/{symbol}/explain` | AI narrative of the engine's numbers. 503 with a clear message when no `ANTHROPIC_API_KEY` is configured |
 | `GET /api/system/feed` | Provider status per connection, last event age, universe size |
 | `GET /api/system/metrics` | Ingestion counters: messages, reconnects, gaps, latency, channel depth |
 | `GET /health/live`, `GET /health/ready` | Liveness / readiness (ready = feed connected and fresh) |
@@ -69,6 +70,13 @@ trades stream. Expect roughly a minute for warm-up of 200 symbols at the default
 | `StaleQuoteThreshold` | 30s | Quotes older than this are flagged stale |
 | `ReceiveTimeout` | 15s | Silence that forces a reconnect (heartbeats arrive every second) |
 | `WarmUpHistory` | true | Load REST history at startup |
+
+### AI explanation (optional)
+
+Set `ANTHROPIC_API_KEY` in the API server's environment (never in the browser). The model defaults to `claude-opus-5`
+(`Anthropic:Model` in `appsettings.json`) with low effort, since the input is already fully structured, and server-side
+refusal fallbacks are enabled so a declined request is rerouted instead of failing. The model receives only the
+engine's computed numbers and is told to invent nothing; every narrative carries a disclaimer.
 
 ## Run the dashboard
 

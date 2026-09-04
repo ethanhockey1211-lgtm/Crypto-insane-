@@ -1,4 +1,4 @@
-import type { BacktestApiRequest, BacktestResult, AlertEvent, AlertFieldInfo, AlertRule, AlertRuleRequest, CandlesResponse, FeedStatus, Opportunity, PaperAccount, PaperAccountView, PaperOrder, PaperPosition, PaperPositionView, PaperStats, PerformanceReport, PlaceOrderRequest, ScannerStream, SignalWithOutcome, TapeEvent } from "./types";
+import type { Explanation, BacktestApiRequest, BacktestResult, AlertEvent, AlertFieldInfo, AlertRule, AlertRuleRequest, CandlesResponse, FeedStatus, Opportunity, PaperAccount, PaperAccountView, PaperOrder, PaperPosition, PaperPositionView, PaperStats, PerformanceReport, PlaceOrderRequest, ScannerStream, SignalWithOutcome, TapeEvent } from "./types";
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5080").replace(/\/$/, "");
 
@@ -12,7 +12,11 @@ async function send<T>(method: string, path: string, body?: unknown): Promise<T>
   const res = await fetch(`${API_BASE}${path}`, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!res.ok) {
     let detail = `${res.status}`;
-    try { detail = (await res.text()).replace(/^"|"$/g, "") || detail; } catch { /* keep status */ }
+    try {
+      const text = await res.text();
+      try { const j = JSON.parse(text) as { detail?: string; title?: string }; detail = j.detail ?? j.title ?? text; }
+      catch { detail = text.replace(/^"|"$/g, "") || detail; }
+    } catch { /* keep status */ }
     throw new Error(detail);
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
@@ -42,6 +46,7 @@ export const api = {
     trades: () => get<PaperPosition[]>("/api/paper/trades"),
     stats: () => get<PaperStats>("/api/paper/stats"),
   },
+  explain: (symbol: string) => send<Explanation>("POST", `/api/scanner/${encodeURIComponent(symbol)}/explain`),
   backtest: (r: BacktestApiRequest) => send<BacktestResult>("POST", "/api/backtest", r),
   performance: {
     report: () => get<PerformanceReport>("/api/performance"),

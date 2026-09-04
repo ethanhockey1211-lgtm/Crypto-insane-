@@ -180,3 +180,5 @@ export interface SignalWithOutcome { signal: SignalRecord; outcome: SignalOutcom
 
 export interface BacktestApiRequest { symbols: string[]; days: number; feeBps: number; slippageBps: number; spreadBps: number; recordThreshold: number; includeBtc: boolean }
 export interface BacktestResult { signals: SignalWithOutcome[]; gross: PerformanceReport; net: PerformanceReport; barsProcessed: number; evaluations: number; duration: string; notes: string[] }
+
+export interface Explanation { summary: string; why: string[]; invalidation: string[]; risks: string[]; appearsExtended: boolean | null; model: string; at: string; disclaimer: string }
