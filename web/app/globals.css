@@ -55,6 +55,9 @@ html, body {
   color: var(--color-ink-3);
 }
 
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 .up { color: var(--color-up); }
 .down { color: var(--color-down); }
 .warn { color: var(--color-warn); }

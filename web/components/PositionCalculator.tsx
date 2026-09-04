@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import { sizePosition } from "@/lib/position";
 import { api } from "@/lib/api";
 import { fmtMoney, fmtPct, fmtPrice } from "@/lib/format";
@@ -39,7 +39,7 @@ export function PositionCalculator({ plan, price, symbol }: { plan: TradePlan | 
   const r = useMemo(() => sizePosition({ ...d, entry, stop, targets: [t1, t2, t3] }), [d, entry, stop, t1, t2, t3]);
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div className="grid grid-cols-2 gap-2">
         <Num label="Account" value={d.accountBalance} onChange={(v) => update({ accountBalance: v })} suffix="$" />
         <Num label="Max position" value={d.maxPositionUsd} onChange={(v) => update({ maxPositionUsd: v })} suffix="$" />
@@ -61,10 +61,10 @@ export function PositionCalculator({ plan, price, symbol }: { plan: TradePlan | 
             <dt className="text-ink-3">Money at risk</dt><dd className="num down">{fmtMoney(r.dollarRisk)} <span className="text-ink-3">({fmtPct(r.riskPctOfAccount, 2)} of account, bound by {r.boundBy})</span></dd>
             <dt className="text-ink-3">Risk per unit</dt><dd className="num">{fmtPrice(r.riskPerUnit)}</dd>
             {r.targets.map((t, i) => (
-              <>
-                <dt key={`k${i}`} className="text-ink-3">Profit at T{i + 1}</dt>
-                <dd key={`v${i}`} className="num up">{fmtMoney(t.profitUsd)} <span className="text-ink-3">{t.rewardRatio.toFixed(1)}R · {fmtPct(t.pct)}</span></dd>
-              </>
+              <Fragment key={i}>
+                <dt className="text-ink-3">Profit at T{i + 1}</dt>
+                <dd className="num up">{fmtMoney(t.profitUsd)} <span className="text-ink-3">{t.rewardRatio.toFixed(1)}R · {fmtPct(t.pct)}</span></dd>
+              </Fragment>
             ))}
             <dt className="text-ink-3">Fees</dt><dd className="num text-ink-2">{fmtMoney(r.fees)}</dd>
           </dl>

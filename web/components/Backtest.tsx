@@ -33,9 +33,9 @@ export function Backtest({ onOpen }: { onOpen: (s: string) => void }) {
     <section className="panel flex flex-col min-h-0 h-full">
       <div className="flex items-center gap-3 px-3 h-9 border-b border-line">
         <span className="eyebrow">Backtest</span>
-        <span className="text-[11px] text-ink-3">Replays 1m history through the same analytics, breakout, scoring, and outcome code as the live scanner. History comes from the exchange REST API.</span>
+        <span className="text-[11px] text-ink-3 hidden lg:inline">Replays 1m history through the same analytics, breakout, scoring, and outcome code as the live scanner. History comes from the exchange REST API.</span>
       </div>
-      <div className="px-3 py-2 border-b border-line grid grid-cols-[2fr_repeat(5,minmax(0,1fr))_auto] gap-2 items-end">
+      <div className="px-3 py-2 border-b border-line grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-[2fr_repeat(5,minmax(0,1fr))_auto] gap-2 items-end">
         <label className="flex flex-col gap-0.5"><span className="eyebrow">Symbols (max 5, BTC added for context)</span><input className="field" value={symbols} onChange={(e) => setSymbols(e.target.value)} /></label>
         <Num label="Days (1–14)" value={days} set={setDays} />
         <Num label="Fee bps" value={fee} set={setFee} />

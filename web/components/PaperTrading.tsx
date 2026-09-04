@@ -99,7 +99,7 @@ export function PaperTrading({ onOpen }: { onOpen: (s: string) => void }) {
           <div className="px-3 py-2 border-b border-line">
             <h3 className="eyebrow mb-1">Performance</h3>
             {stats && stats.trades > 0 ? (
-              <div className="grid grid-cols-4 gap-x-3 gap-y-1">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-1">
                 <div><div className="eyebrow">Trades</div><div className="num">{stats.trades}</div></div>
                 <div><div className="eyebrow">Win rate</div><div className="num">{(stats.winRate * 100).toFixed(0)}%</div></div>
                 <div><div className="eyebrow">Profit factor</div><div className="num">{stats.profitFactor?.toFixed(2) ?? "—"}</div></div>

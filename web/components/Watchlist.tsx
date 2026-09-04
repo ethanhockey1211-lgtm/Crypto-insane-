@@ -8,7 +8,7 @@ function WatchRow({ symbol, onOpen, onRemove }: { symbol: string; onOpen: (s: st
   const row = useRow(symbol);
   const dist = row?.keyLevel != null && row.price > 0 ? (row.keyLevel - row.price) / row.price : null;
   return (
-    <tr className="row-hover border-b border-line/60 h-[30px] cursor-pointer" onClick={() => onOpen(symbol)}>
+    <tr className="row-hover border-b border-line/60 h-11 sm:h-[30px] cursor-pointer" onClick={() => onOpen(symbol)}>
       <td className="px-3 font-medium">{symbol.replace("-USD", "")}</td>
       <td className="num px-2 text-right">{row ? fmtPrice(row.price) : "—"}</td>
       <td className="num px-2 text-right">{row ? row.score.toFixed(0) : "—"}</td>

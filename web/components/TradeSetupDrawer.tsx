@@ -10,7 +10,7 @@ import { PositionCalculator } from "./PositionCalculator";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="px-4 py-3 border-b border-line">
+    <section className="px-3 sm:px-4 py-3 border-b border-line">
       <h3 className="eyebrow mb-2">{title}</h3>
       {children}
     </section>
@@ -58,7 +58,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
 
   return (
     <aside className="panel flex flex-col h-full min-h-0" aria-label={`${symbol} setup`}>
-      <div className="flex items-center gap-3 px-4 h-12 border-b border-line">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 sm:px-4 py-2 sm:py-0 sm:h-12 border-b border-line">
         <span className="text-[16px] font-semibold">{symbol.replace("-USD", "")}<span className="text-ink-3 font-normal">/USD</span></span>
         <span className="num text-[16px]">{fmtPrice(price)}</span>
         {opp && <span className={`num text-[20px] font-medium ${scoreClass}`}>{opp.score.toFixed(0)}</span>}
@@ -66,10 +66,10 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
         {opp?.overextension.doNotChase && <span className="tag tag-warn">do not chase</span>}
         {opp?.quality.stale && <span className="tag text-warn border-warn/40">stale {fmtAge(opp.quality.ageMs)}</span>}
         <button onClick={() => onWatch(symbol)} className="ml-auto text-[11px] px-2 py-0.5 rounded-[3px] bg-navy-3 hover:bg-navy-2">{watched ? "Watching" : "Watch"}</button>
-        <button onClick={onClose} className="text-ink-3 hover:text-ink text-[16px] px-1" aria-label="Close setup">×</button>
+        <button onClick={onClose} className="text-ink-3 hover:text-ink text-[18px] px-2 py-0.5 -mr-1" aria-label="Close setup">×</button>
       </div>
       <div className="overflow-auto min-h-0 flex-1">
-        <div className="h-[300px] border-b border-line">
+        <div className="h-[240px] sm:h-[300px] border-b border-line">
           <PriceChart symbol={symbol} levels={{ plan, keyLevel: opp?.setup.keyLevel ?? null, vwap: m?.vwap ?? null }} />
         </div>
         {error && <div className="px-4 py-3 warn text-[12px]">Setup detail unavailable: {error}</div>}
@@ -78,7 +78,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
             <Section title="Plan">
               {plan ? (
                 <>
-                  <div className="grid grid-cols-4 gap-x-4 gap-y-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2">
                     <Stat k="Entry zone" v={`${fmtPrice(plan.entryLow)} – ${fmtPrice(plan.entryHigh)}`} />
                     <Stat k="Invalidation" v={fmtPrice(plan.invalidation)} cls="down" />
                     <Stat k="Stop reference" v={fmtPrice(plan.stop)} cls="down" />
@@ -134,7 +134,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
               <MomentumPanel m={opp.metrics} />
             </Section>
             <Section title="Levels and context">
-              <div className="grid grid-cols-4 gap-x-4 gap-y-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2">
                 <Stat k="ATR 5m" v={<>{fmtPrice(m?.atr5m)} <span className="text-ink-3">{fmtPct(m?.atrPct5m)}</span></>} />
                 <Stat k="VWAP" v={<>{fmtPrice(m?.vwap)} <span className={m?.vwapDeviationPct != null && m.vwapDeviationPct > 0 ? "up" : "down"}>{fmtPct(m?.vwapDeviationPct)}</span>{m?.vwapSigma != null ? <span className="text-ink-3"> {m.vwapSigma.toFixed(1)}σ</span> : null}</>} />
                 <Stat k="Relative volume" v={fmtX(m?.relVol5m)} />
@@ -151,7 +151,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
               {opp.setup.breakout && <p className="text-[11.5px] text-ink-2 mt-2">Breakout tracker: <span className="text-ink">{opp.setup.breakout.state}</span> at {fmtPrice(opp.setup.breakout.level.price)} — {opp.setup.breakout.narrative}</p>}
             </Section>
             <Section title="Score breakdown">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11.5px]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-[11.5px]">
                 {opp.breakdown.components.map((c) => (
                   <div key={c.name} className="flex gap-2 items-start">
                     <span className="num w-14 shrink-0 text-right">{c.points.toFixed(0)}<span className="text-ink-3">/{c.max.toFixed(0)}</span></span>

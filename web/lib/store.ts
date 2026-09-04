@@ -163,4 +163,6 @@ export const useHub = () => useSyncExternalStore(store.subscribeHeader, store.ge
 export const useTape = () => useSyncExternalStore(store.subscribeTape, store.getTape, () => EMPTY as TapeEvent[]);
 export const useAlerts = () => useSyncExternalStore(store.subscribeAlerts, store.getAlerts, () => EMPTY as AlertEvent[]);
 export const usePaperVersion = () => useSyncExternalStore(store.subscribePaper, store.getPaperVersion, () => 0);
-export const useCycle = () => useSyncExternalStore(store.subscribeHeader, store.getCycle, () => ({ at: null, ms: 0 }));
+// Server/prerender snapshots must be stable references or React reports an infinite-loop risk.
+const NO_CYCLE = { at: null, ms: 0 } as const;
+export const useCycle = () => useSyncExternalStore(store.subscribeHeader, store.getCycle, () => NO_CYCLE);

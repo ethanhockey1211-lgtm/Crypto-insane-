@@ -32,7 +32,7 @@ export function MarketHeatmap({ onOpen }: { onOpen: (s: string) => void }) {
 
   return (
     <section className="panel flex flex-col min-h-0 h-full">
-      <div className="flex items-center gap-3 px-3 h-9 border-b border-line text-[11px]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 sm:py-0 sm:h-9 border-b border-line text-[11px]">
         <span className="eyebrow">Heatmap</span>
         <span className="text-ink-3">color</span>
         {(["r1m", "r5m", "r15m", "r1h", "r24h", "score"] as Metric[]).map((m) => (

@@ -37,13 +37,13 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
 
   return (
     <section className="panel flex flex-col min-h-0 h-full">
-      <div className="flex items-center gap-3 px-3 h-9 border-b border-line">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 sm:py-0 sm:h-9 border-b border-line">
         <span className="eyebrow">Opportunities</span>
         <span className="num text-[11px] text-ink-3 whitespace-nowrap">{symbols.length} of {order.length}</span>
         <label className="flex items-center gap-1.5 text-[11px] text-ink-2 ml-2 whitespace-nowrap">
           <input type="checkbox" checked={onlySetups} onChange={(e) => setOnlySetups(e.target.checked)} /> setups only
         </label>
-        <input className="field !w-28 text-[11px]" placeholder="filter" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Filter by symbol" />
+        <input className="field !w-20 sm:!w-28 text-[11px]" placeholder="filter" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Filter by symbol" />
         <div className="ml-auto hidden md:flex items-center gap-1 text-[11px]">
           <span className="text-ink-3 mr-1">sort</span>
           {SORTS.map((s) => (
@@ -58,21 +58,21 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
         <table className="w-full border-collapse text-[12px]">
           <thead className="sticky top-0 bg-navy z-10">
             <tr className="eyebrow h-7 border-b border-line">
-              <th className="text-right pl-3 pr-1 font-normal">#</th>
+              <th className="text-right pl-3 pr-1 font-normal hidden sm:table-cell">#</th>
               <th className="text-left px-2 font-normal">Symbol</th>
-              <th className="text-left px-2 font-normal">Score · components</th>
-              <th className="text-left px-2 font-normal">Setup</th>
-              <th className="text-left px-2 font-normal">Breakout</th>
+              <th className="text-left px-2 font-normal">Score<span className="hidden md:inline"> · components</span></th>
+              <th className="text-left px-2 font-normal hidden sm:table-cell">Setup</th>
+              <th className="text-left px-2 font-normal hidden md:table-cell">Breakout</th>
               <th className="text-right px-2 font-normal">Price</th>
-              <th className="text-right px-2 font-normal">Entry</th>
-              <th className="text-right px-2 font-normal">Stop</th>
-              <th className="text-right px-2 font-normal">Target</th>
-              <th className="text-right px-2 font-normal">R:R</th>
-              <th className="text-right px-2 font-normal">5m</th>
+              <th className="text-right px-2 font-normal hidden xl:table-cell">Entry</th>
+              <th className="text-right px-2 font-normal hidden xl:table-cell">Stop</th>
+              <th className="text-right px-2 font-normal hidden xl:table-cell">Target</th>
+              <th className="text-right px-2 font-normal hidden sm:table-cell">R:R</th>
+              <th className="text-right px-2 font-normal hidden lg:table-cell">5m</th>
               <th className="text-right px-2 font-normal">15m</th>
-              <th className="text-right px-2 font-normal">1h</th>
-              <th className="text-right px-2 font-normal">24h</th>
-              <th className="text-right px-2 pr-3 font-normal">RelVol</th>
+              <th className="text-right px-2 font-normal hidden lg:table-cell">1h</th>
+              <th className="text-right px-2 pr-3 md:pr-2 font-normal">24h</th>
+              <th className="text-right px-2 pr-3 font-normal hidden md:table-cell">RelVol</th>
             </tr>
           </thead>
           <tbody>
