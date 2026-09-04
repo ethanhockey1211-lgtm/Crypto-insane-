@@ -29,6 +29,8 @@ public sealed class MarketStateEngine : BackgroundService, IMarketStateReader
     private readonly ConcurrentDictionary<int, FeedStatusChange> _connections = new();
     private readonly List<Candle> _closed = new(16);
     private long _engineErrors;
+    private readonly ConcurrentQueue<EngineError> _recentErrors = new();
+    private const int RecentErrorCapacity = 8;
     private DateTimeOffset? _lastEventAt;
     private DateTimeOffset? _lastTradeAt;
 
@@ -60,6 +62,7 @@ public sealed class MarketStateEngine : BackgroundService, IMarketStateReader
     public DateTimeOffset? LastEventAt => _lastEventAt;
     public DateTimeOffset? LastTradeAt => _lastTradeAt;
     public long EngineErrors => Interlocked.Read(ref _engineErrors);
+    public IReadOnlyList<EngineError> RecentErrors => _recentErrors.ToArray();
 
     public FeedStatus FeedStatus
     {
@@ -118,7 +121,10 @@ public sealed class MarketStateEngine : BackgroundService, IMarketStateReader
                 catch (Exception ex)
                 {
                     Interlocked.Increment(ref _engineErrors);
-                    _logger.LogError(ex, "Engine failed handling {Kind} event for {Symbol}", evt.Kind, evt.Kind is MarketEventKind.Trade or MarketEventKind.QuoteOnly ? evt.Trade.Symbol.Value : evt.Ticker.Symbol.Value);
+                    var symbol = SymbolOf(evt);
+                    _logger.LogError(ex, "Engine failed handling {Kind} event for {Symbol}", evt.Kind, symbol);
+                    _recentErrors.Enqueue(EngineError.From(_time.GetUtcNow(), evt.Kind, symbol, ex));
+                    while (_recentErrors.Count > RecentErrorCapacity) _recentErrors.TryDequeue(out _);
                 }
                 _metrics.EventProcessed(Stopwatch.GetElapsedTime(started).TotalMicroseconds);
                 _metrics.ChannelDepth(_channel.Depth);
@@ -132,9 +138,19 @@ public sealed class MarketStateEngine : BackgroundService, IMarketStateReader
         }
     }
 
+    private static string? SymbolOf(in MarketEvent evt) => evt.Kind switch
+    {
+        MarketEventKind.Trade or MarketEventKind.QuoteOnly => evt.Trade.Symbol.Value,
+        MarketEventKind.Ticker => evt.Ticker.Symbol.Value,
+        MarketEventKind.Gap => evt.Gap?.Symbol.Value,
+        _ => null,
+    };
+
     private void Handle(in MarketEvent evt)
     {
-        _lastEventAt = evt.At;
+        // "Last event" means the last thing the PROVIDER sent. Clock ticks and internal commands are not feed
+        // liveness, and a command carries no timestamp at all.
+        if (evt.Kind is not (MarketEventKind.ClockTick or MarketEventKind.Command)) _lastEventAt = evt.At;
         _closed.Clear();
         switch (evt.Kind)
         {
@@ -201,5 +217,21 @@ public sealed class MarketStateEngine : BackgroundService, IMarketStateReader
             }
         }
         catch (OperationCanceledException) { }
+    }
+}
+
+/// <summary>One exception caught on the engine loop, kept so operators can read it from the status endpoint without log access.</summary>
+public sealed record EngineError(DateTimeOffset At, string Kind, string? Symbol, string Error, string? Site)
+{
+    public static EngineError From(DateTimeOffset at, MarketEventKind kind, string? symbol, Exception ex)
+    {
+        // First frame inside this codebase, if any: enough to locate the fault without shipping a full stack trace.
+        string? site = null;
+        foreach (var line in (ex.StackTrace ?? string.Empty).Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("at TradingScanner.", StringComparison.Ordinal)) { site = trimmed; break; }
+        }
+        return new EngineError(at, kind.ToString(), symbol, $"{ex.GetType().Name}: {ex.Message}", site);
     }
 }

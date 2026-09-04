@@ -56,6 +56,15 @@ public sealed record FeedStatusDto(
     long EngineErrors,
     string StartupPhase,
     string? StartupError,
-    int StartupAttempts);
+    int StartupAttempts,
+    int StatsUnavailable,
+    WarmUpDto History,
+    IReadOnlyList<EngineErrorDto> RecentErrors);
+
+/// <summary>REST history warm-up progress: symbols loaded/failed out of the universe, and the last failure text.</summary>
+public sealed record WarmUpDto(int Total, int Loaded, int Failed, string? LastError, bool Complete);
+
+/// <summary>An exception caught on the engine loop (type and message, plus the first in-repo stack frame).</summary>
+public sealed record EngineErrorDto(DateTimeOffset At, string Kind, string? Symbol, string Error, string? Site);
 
 public sealed record GapDto(string Symbol, long ExpectedTradeId, long ReceivedTradeId, long MissedTrades, DateTimeOffset At);

@@ -97,6 +97,43 @@ public class MarketStateEngineTests
             channel.Writer.TryWrite(MarketEvent.FromTrade(T.Trade("BTC-USD", 2m, 1m, T.Base.AddSeconds(1))));
             await WaitUntil(() => engine.EngineErrors == 2, "errors counted");
             Assert.Equal(2m, engine.GetQuote(new Symbol("BTC-USD"))!.Price);
+
+            var recent = engine.RecentErrors;
+            Assert.Equal(2, recent.Count);
+            Assert.All(recent, e =>
+            {
+                Assert.Equal("Trade", e.Kind);
+                Assert.Equal("BTC-USD", e.Symbol);
+                Assert.Equal("InvalidOperationException: boom", e.Error);
+                Assert.Contains("ThrowingObserver", e.Site);
+            });
+        }
+        finally
+        {
+            await engine.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Last_event_time_tracks_provider_events_only()
+    {
+        var channel = new MarketEventChannel(100);
+        var engine = new MarketStateEngine(channel, [], T.Opts(), new MarketDataMetrics(), NullLogger<MarketStateEngine>.Instance);
+        await engine.StartAsync(CancellationToken.None);
+        try
+        {
+            channel.Writer.TryWrite(MarketEvent.Clock(T.Base.AddMinutes(5)));
+            await engine.PostAsync((_, _) => { }, CancellationToken.None);
+            Assert.Null(engine.LastEventAt); // neither the tick nor the command came from the feed
+
+            channel.Writer.TryWrite(MarketEvent.FromTrade(T.Trade("BTC-USD", 1m, 1m, T.Base)));
+            await engine.PostAsync((_, _) => { }, CancellationToken.None);
+            Assert.Equal(T.Base.AddMilliseconds(40), engine.LastEventAt); // the trade's ReceivedAt
+
+            channel.Writer.TryWrite(MarketEvent.Clock(T.Base.AddMinutes(10)));
+            await engine.PostAsync((_, _) => { }, CancellationToken.None);
+            Assert.Equal(T.Base.AddMilliseconds(40), engine.LastEventAt);
+            Assert.Empty(engine.RecentErrors);
         }
         finally
         {

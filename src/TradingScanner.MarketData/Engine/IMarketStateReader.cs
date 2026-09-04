@@ -12,4 +12,6 @@ public interface IMarketStateReader : ICandleHistoryReader, ISymbolInfoReader
     DateTimeOffset? LastEventAt { get; }
     DateTimeOffset? LastTradeAt { get; }
     long EngineErrors { get; }
+    /// <summary>Most recent engine-loop exceptions, oldest first (bounded).</summary>
+    IReadOnlyList<EngineError> RecentErrors { get; }
 }

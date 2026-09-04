@@ -65,7 +65,7 @@ http.createServer((req, res) => {
   else if (u.pathname === "/api/scanner/tape") body = tape;
   else if (u.pathname === "/api/scanner/market") body = market;
   else if (u.pathname.startsWith("/api/scanner/")) body = opportunity(decodeURIComponent(u.pathname.split("/")[3]));
-  else if (u.pathname === "/api/system/feed") body = { provider: "mock", exchange: "Mock Exchange", status: "Disconnected", live: false, connections: {}, lastEventAgeMs: 12000, lastTradeAgeMs: null, universeSize: rows.length, universeSelectedAt: null, engineErrors: 0 };
+  else if (u.pathname === "/api/system/feed") body = { provider: "mock", exchange: "Mock Exchange", status: "Disconnected", live: false, connections: {}, lastEventAgeMs: 12000, lastTradeAgeMs: null, universeSize: rows.length, universeSelectedAt: null, engineErrors: 0, startupPhase: "Streaming", startupError: null, startupAttempts: 0, statsUnavailable: 0, history: { total: rows.length, loaded: rows.length, failed: 0, lastError: null, complete: true }, recentErrors: [] };
   else if (/^\/api\/market\/[^/]+\/candles$/.test(u.pathname)) body = candles(decodeURIComponent(u.pathname.split("/")[3]), u.searchParams.get("tf") ?? "5m");
   res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Content-Type", "application/json");
   if (body === null) { res.statusCode = 404; res.end("{}"); return; }

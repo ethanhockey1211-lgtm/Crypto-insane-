@@ -181,6 +181,11 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
         Assert.Equal("Connected", feed.Status);
         Assert.True(feed.Live);
         Assert.Equal(2, feed.UniverseSize);
+        Assert.Equal("Streaming", feed.StartupPhase);
+        Assert.Equal(0, feed.StatsUnavailable);
+        Assert.Empty(feed.RecentErrors);
+        Assert.Equal(0, feed.EngineErrors);
+        Assert.False(feed.History.Complete); // warm-up disabled in this factory, so it never reports
 
         var ready = await client.GetAsync("/health/ready");
         Assert.Equal(HttpStatusCode.OK, ready.StatusCode);

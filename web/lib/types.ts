@@ -94,6 +94,10 @@ export interface FeedStatus {
   startupPhase: string;
   startupError: string | null;
   startupAttempts: number;
+  /** Candidate products excluded from ranking because their 24h stats could not be fetched. */
+  statsUnavailable: number;
+  history: { total: number; loaded: number; failed: number; lastError: string | null; complete: boolean };
+  recentErrors: { at: string; kind: string; symbol: string | null; error: string; site: string | null }[];
 }
 
 export interface TapeEvent {

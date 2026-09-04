@@ -56,7 +56,12 @@ export function MarketHeader() {
       </div>
       <div className="flex flex-col justify-center px-3 ml-auto whitespace-nowrap text-right">
         <span className="eyebrow"><span className={live ? "up" : "warn"}>●</span> {feed?.exchange ?? "Feed"} · {live ? "live" : "not live"}</span>
-        <span className="num text-[11px] text-ink-3">{market?.symbolsEvaluated ?? 0} symbols · cycle {cycle.ms.toFixed(0)}ms · feed {fmtAge(feed?.lastEventAgeMs)}</span>
+        <span className="num text-[11px] text-ink-3">
+          {market?.symbolsEvaluated ?? 0} symbols · cycle {cycle.ms.toFixed(0)}ms · feed {fmtAge(feed?.lastEventAgeMs)}
+          {feed && feed.history.total > 0 && !feed.history.complete ? <span className="warn"> · history {feed.history.loaded}/{feed.history.total}</span> : null}
+          {feed && feed.history.failed > 0 ? <span className="warn" title={feed.history.lastError ?? undefined}> · {feed.history.failed} history failed</span> : null}
+          {feed && feed.engineErrors > 0 ? <span className="down" title={feed.recentErrors.at(-1)?.error}> · {feed.engineErrors} engine errors</span> : null}
+        </span>
       </div>
     </header>
   );

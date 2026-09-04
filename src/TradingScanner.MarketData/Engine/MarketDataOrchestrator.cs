@@ -66,7 +66,12 @@ public sealed class MarketDataOrchestrator : BackgroundService
         if (products is null) return;
 
         var universe = UniverseSelector.Select(products, _options);
-        _universe.Set(universe, _time.GetUtcNow());
+        var statsUnavailable = products.Count(p => p.IsOnline
+            && string.Equals(p.QuoteCurrency, _options.QuoteCurrency, StringComparison.OrdinalIgnoreCase)
+            && p.Volume24hQuote is null);
+        if (statsUnavailable > 0)
+            _logger.LogWarning("{Count} candidate products had no 24h stats and were excluded from universe ranking", statsUnavailable);
+        _universe.Set(universe, _time.GetUtcNow(), statsUnavailable);
         var symbols = universe.Select(p => p.Symbol).ToArray();
         _engine.RegisterSymbols(symbols);
         _logger.LogInformation("Universe: {Count} symbols on {Exchange} (top by 24h {Quote} volume; min {Min:N0}). Top 10: {Top}",
@@ -81,7 +86,9 @@ public sealed class MarketDataOrchestrator : BackgroundService
         }
 
         var streaming = _provider.RunAsync(symbols, _channel.Writer, stoppingToken);
-        var warm = _options.WarmUpHistory ? _warmUp.WarmUpAsync(symbols, stoppingToken) : Task.CompletedTask;
+        var warm = _options.WarmUpHistory
+            ? _warmUp.WarmUpAsync(symbols, stoppingToken, _universe.ReportWarmUp)
+            : Task.CompletedTask;
 
         try
         {

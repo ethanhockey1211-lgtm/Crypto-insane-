@@ -31,12 +31,15 @@ public sealed class HistoryWarmUp
         _time = time ?? TimeProvider.System;
     }
 
-    public async Task WarmUpAsync(IReadOnlyCollection<Symbol> symbols, CancellationToken ct)
+    /// <param name="progress">Invoked after every symbol (from worker threads) with the running totals.</param>
+    public async Task<WarmUpResult> WarmUpAsync(IReadOnlyCollection<Symbol> symbols, CancellationToken ct, Action<WarmUpResult>? progress = null)
     {
         var timeframes = Preferred.Where(_provider.HistoricalTimeframes.Contains).ToArray();
         var gate = new SemaphoreSlim(4);
         var done = 0;
         var failed = 0;
+        string? lastError = null;
+        void Publish(bool complete) => progress?.Invoke(new WarmUpResult(symbols.Count, Volatile.Read(ref done), Volatile.Read(ref failed), Volatile.Read(ref lastError), complete));
         var tasks = symbols.Select(async symbol =>
         {
             await gate.WaitAsync(ct).ConfigureAwait(false);
@@ -60,12 +63,15 @@ public sealed class HistoryWarmUp
                 }, ct).ConfigureAwait(false);
                 var n = Interlocked.Increment(ref done);
                 if (n % 25 == 0 || n == symbols.Count) _logger.LogInformation("History warm-up {Done}/{Total}", n, symbols.Count);
+                Publish(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
             catch (Exception ex)
             {
                 Interlocked.Increment(ref failed);
+                Volatile.Write(ref lastError, $"{symbol.Value}: {ex.GetType().Name}: {ex.Message}");
                 _logger.LogWarning(ex, "History warm-up failed for {Symbol}", symbol);
+                Publish(false);
             }
             finally
             {
@@ -74,5 +80,14 @@ public sealed class HistoryWarmUp
         }).ToArray();
         await Task.WhenAll(tasks).ConfigureAwait(false);
         _logger.LogInformation("History warm-up complete: {Ok} ok, {Failed} failed", done, failed);
+        var result = new WarmUpResult(symbols.Count, done, failed, lastError, true);
+        progress?.Invoke(result);
+        return result;
     }
+}
+
+/// <summary>Progress/outcome of REST history warm-up, published to the status endpoint.</summary>
+public sealed record WarmUpResult(int Total, int Loaded, int Failed, string? LastError, bool Complete)
+{
+    public static readonly WarmUpResult Empty = new(0, 0, 0, null, false);
 }

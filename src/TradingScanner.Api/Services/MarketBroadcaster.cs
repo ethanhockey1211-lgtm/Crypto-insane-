@@ -72,7 +72,10 @@ public sealed class MarketBroadcaster : BackgroundService, IMarketEventObserver
             _reader.EngineErrors,
             _universe.Phase,
             _universe.LastError,
-            _universe.Attempts);
+            _universe.Attempts,
+            _universe.StatsUnavailable,
+            new WarmUpDto(_universe.WarmUp.Total, _universe.WarmUp.Loaded, _universe.WarmUp.Failed, _universe.WarmUp.LastError, _universe.WarmUp.Complete),
+            _reader.RecentErrors.Select(e => new EngineErrorDto(e.At, e.Kind, e.Symbol, e.Error, e.Site)).ToList());
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
