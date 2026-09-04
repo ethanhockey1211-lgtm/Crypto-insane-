@@ -14,6 +14,10 @@ using TradingScanner.Signals;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// PaaS convention (Render, Heroku, Fly): bind to the injected PORT when present.
+if (Environment.GetEnvironmentVariable("PORT") is { Length: > 0 } port && int.TryParse(port, out var portNumber))
+    builder.WebHost.UseUrls($"http://0.0.0.0:{portNumber}");
+
 if (!builder.Environment.IsDevelopment())
 {
     builder.Logging.ClearProviders();

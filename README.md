@@ -93,6 +93,15 @@ Set `ANTHROPIC_API_KEY` in the API server's environment (never in the browser). 
 refusal fallbacks are enabled so a declined request is rerouted instead of failing. The model receives only the
 engine's computed numbers and is told to invent nothing; every narrative carries a disclaimer.
 
+## Deploy (Render or any Docker host)
+
+`Dockerfile` builds the API (multi-stage .NET 8, binds to the injected `PORT`); `web/Dockerfile` builds the Next.js
+app in standalone mode with `NEXT_PUBLIC_API_URL` baked in at build time. `render.yaml` is a Render Blueprint that
+creates both services and a Postgres database, passing the database URL as `ConnectionStrings__Postgres` (postgres://
+URLs are converted for Npgsql automatically) and the web origin as `Cors__Origins__0`. On Render: New → Blueprint →
+this repository, or set an existing service's runtime to Docker with the matching Dockerfile path and context. A
+service left on auto-detect fails within seconds because the repository holds both a .NET solution and a Node app.
+
 ## Run the dashboard
 
 Requires Node 22 and pnpm.

@@ -20,8 +20,9 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddPostgresPersistence(this IServiceCollection services, IConfiguration configuration)
     {
-        var cs = configuration.GetConnectionString("Postgres");
-        if (string.IsNullOrWhiteSpace(cs)) return services;
+        var raw = configuration.GetConnectionString("Postgres") ?? Environment.GetEnvironmentVariable("DATABASE_URL");
+        if (string.IsNullOrWhiteSpace(raw)) return services;
+        var cs = NormalizeConnectionString(raw);
         services.AddSingleton(sp => new NpgsqlDataSourceBuilder(cs).UseLoggerFactory(sp.GetRequiredService<ILoggerFactory>()).Build());
         services.AddSingleton<Migrator>();
         services.AddHostedService<MigrationHostedService>();
@@ -34,7 +35,36 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static bool HasPostgres(this IConfiguration configuration) => !string.IsNullOrWhiteSpace(configuration.GetConnectionString("Postgres"));
+    public static bool HasPostgres(this IConfiguration configuration) => !string.IsNullOrWhiteSpace(configuration.GetConnectionString("Postgres") ?? Environment.GetEnvironmentVariable("DATABASE_URL"));
+
+    /// <summary>Npgsql needs key=value form; hosted databases hand out postgres:// URLs. Convert when needed.</summary>
+    public static string NormalizeConnectionString(string raw)
+    {
+        if (!raw.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) && !raw.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase)) return raw;
+        var uri = new Uri(raw);
+        var userInfo = uri.UserInfo.Split(':', 2);
+        var b = new NpgsqlConnectionStringBuilder
+        {
+            Host = uri.Host,
+            Port = uri.Port > 0 ? uri.Port : 5432,
+            Username = Uri.UnescapeDataString(userInfo[0]),
+            Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : null,
+            Database = uri.AbsolutePath.TrimStart('/'),
+        };
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var sslMode = query["sslmode"];
+        // Hosted providers terminate TLS and expect it; keep the caller's explicit choice, default to Require off-localhost.
+        b.SslMode = sslMode?.ToLowerInvariant() switch
+        {
+            "disable" => SslMode.Disable,
+            "prefer" => SslMode.Prefer,
+            "require" => SslMode.Require,
+            "verify-ca" => SslMode.VerifyCA,
+            "verify-full" => SslMode.VerifyFull,
+            _ => uri.Host is "localhost" or "127.0.0.1" ? SslMode.Prefer : SslMode.Require,
+        };
+        return b.ConnectionString;
+    }
 
     /// <summary>Runs migrations before other hosted services start (registered first).</summary>
     private sealed class MigrationHostedService : IHostedService

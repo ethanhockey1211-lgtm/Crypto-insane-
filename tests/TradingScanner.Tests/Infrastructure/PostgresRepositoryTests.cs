@@ -132,3 +132,25 @@ public sealed class PostgresRepositoryTests : IAsyncLifetime
         Assert.Equal(10, archiver.Written);
     }
 }
+
+public class ConnectionStringTests
+{
+    [Fact]
+    public void Postgres_urls_are_converted_for_npgsql_and_key_value_strings_pass_through()
+    {
+        var cs = TradingScanner.Infrastructure.ServiceCollectionExtensions.NormalizeConnectionString("postgres://scanner:p%40ss@db.internal:5432/tradingscanner");
+        var b = new Npgsql.NpgsqlConnectionStringBuilder(cs);
+        Assert.Equal("db.internal", b.Host);
+        Assert.Equal(5432, b.Port);
+        Assert.Equal("scanner", b.Username);
+        Assert.Equal("p@ss", b.Password);
+        Assert.Equal("tradingscanner", b.Database);
+        Assert.Equal(Npgsql.SslMode.Require, b.SslMode);
+
+        var local = TradingScanner.Infrastructure.ServiceCollectionExtensions.NormalizeConnectionString("postgresql://u:p@localhost/x?sslmode=disable");
+        Assert.Equal(Npgsql.SslMode.Disable, new Npgsql.NpgsqlConnectionStringBuilder(local).SslMode);
+
+        const string kv = "Host=localhost;Username=u;Password=p;Database=x";
+        Assert.Equal(kv, TradingScanner.Infrastructure.ServiceCollectionExtensions.NormalizeConnectionString(kv));
+    }
+}
