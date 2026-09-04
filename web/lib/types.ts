@@ -91,6 +91,9 @@ export interface FeedStatus {
   universeSize: number;
   universeSelectedAt: string | null;
   engineErrors: number;
+  startupPhase: string;
+  startupError: string | null;
+  startupAttempts: number;
 }
 
 export interface TapeEvent {

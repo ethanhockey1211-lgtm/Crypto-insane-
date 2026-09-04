@@ -51,12 +51,14 @@ public sealed class MarketDataOrchestrator : BackgroundService
         {
             try
             {
+                _universe.Report("SelectingUniverse");
                 products = await _provider.GetProductsAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
             catch (Exception ex)
             {
                 var delay = backoff.Next();
+                _universe.Report("RetryingUniverse", $"{ex.GetType().Name}: {ex.Message}");
                 _logger.LogError(ex, "Product list unavailable from {Provider}; retrying in {Delay}s", _provider.Name, delay.TotalSeconds);
                 await Task.Delay(delay, _time, stoppingToken).ConfigureAwait(false);
             }
@@ -73,6 +75,7 @@ public sealed class MarketDataOrchestrator : BackgroundService
 
         if (symbols.Length == 0)
         {
+            _universe.Report("Failed", "Empty universe: no online USD products met MarketData:MinVolume24hQuote, or every stats call failed.");
             _logger.LogError("Empty universe; nothing to stream. Check MarketData:MinVolume24hQuote and QuoteCurrency.");
             return;
         }

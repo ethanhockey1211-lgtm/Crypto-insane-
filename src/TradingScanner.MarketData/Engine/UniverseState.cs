@@ -10,10 +10,22 @@ public sealed class UniverseState
     public IReadOnlyList<ProductInfo> Products => Volatile.Read(ref _products);
     public IReadOnlyList<Symbol> Symbols => Products.Select(p => p.Symbol).ToArray();
     public DateTimeOffset? SelectedAt { get; private set; }
+    /// <summary>Startup progress: Starting, SelectingUniverse, Streaming, Failed.</summary>
+    public string Phase { get; private set; } = "Starting";
+    public string? LastError { get; private set; }
+    public int Attempts { get; private set; }
 
     public void Set(IReadOnlyList<ProductInfo> products, DateTimeOffset at)
     {
         Volatile.Write(ref _products, products);
         SelectedAt = at;
+        Phase = "Streaming";
+        LastError = null;
+    }
+
+    public void Report(string phase, string? error = null)
+    {
+        Phase = phase;
+        if (error is not null) { LastError = error; Attempts++; }
     }
 }

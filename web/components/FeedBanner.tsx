@@ -11,6 +11,8 @@ export function FeedBanner() {
   if (!hubDown && !feedDown) return null;
   const detail = hubDown
     ? hub === "reconnecting" ? "Reconnecting to the scanner…" : "Scanner API unreachable. Prices shown are the last received and are not moving."
+    : feed?.startupPhase === "SelectingUniverse" ? `Starting: selecting the tradable universe from ${feed.exchange} (about a minute). Sockets open next.`
+    : feed?.startupError ? `Startup blocked: ${feed.startupError} (attempt ${feed.startupAttempts}). Retrying automatically.`
     : `${feed?.exchange ?? "Exchange"} feed ${feed?.status ?? "unknown"}. Last event ${fmtAge(feed?.lastEventAgeMs)} ago. Reconnection is automatic.`;
   return (
     <div role="alert" className="flex items-center gap-3 px-3 py-1.5 border-b border-warn/50 bg-warn/10 text-warn">

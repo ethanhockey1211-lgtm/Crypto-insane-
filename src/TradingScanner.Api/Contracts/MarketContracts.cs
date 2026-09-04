@@ -53,6 +53,9 @@ public sealed record FeedStatusDto(
     long? LastTradeAgeMs,
     int UniverseSize,
     DateTimeOffset? UniverseSelectedAt,
-    long EngineErrors);
+    long EngineErrors,
+    string StartupPhase,
+    string? StartupError,
+    int StartupAttempts);
 
 public sealed record GapDto(string Symbol, long ExpectedTradeId, long ReceivedTradeId, long MissedTrades, DateTimeOffset At);

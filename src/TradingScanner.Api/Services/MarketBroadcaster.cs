@@ -69,7 +69,10 @@ public sealed class MarketBroadcaster : BackgroundService, IMarketEventObserver
             _reader.LastTradeAt is { } lt ? (long)(now - lt).TotalMilliseconds : null,
             _universe.Products.Count,
             _universe.SelectedAt,
-            _reader.EngineErrors);
+            _reader.EngineErrors,
+            _universe.Phase,
+            _universe.LastError,
+            _universe.Attempts);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
