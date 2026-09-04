@@ -50,7 +50,7 @@ public sealed class SignalTracker
             if (_lastRecorded.TryGetValue(key, out var last) && now - last < _o.DedupeWindow) continue;
             _lastRecorded[key] = now;
             var record = ToRecord(o, snapshot.Market);
-            var outcome = new SignalOutcome(record.Id, null, null, null, null, 0, 0, record.Stop is null ? null : false, record.Target1 is null ? null : false, record.Target2 is null ? null : false, record.Target3 is null ? null : false, "none", null, now, false);
+            var outcome = new SignalOutcome(record.Id, null, null, null, null, null, 0, 0, record.Stop is null ? null : false, record.Target1 is null ? null : false, record.Target2 is null ? null : false, record.Target3 is null ? null : false, "none", null, now, false);
             var item = new SignalWithOutcome(record, outcome);
             _active[record.Id] = item;
             await _repo.SaveAsync(record, outcome, ct).ConfigureAwait(false);
@@ -97,6 +97,7 @@ public sealed class SignalTracker
         var r15 = oc.Ret15m ?? (elapsed >= TimeSpan.FromMinutes(15) ? ret : null);
         var r30 = oc.Ret30m ?? (elapsed >= TimeSpan.FromMinutes(30) ? ret : null);
         var r60 = oc.Ret1h ?? (elapsed >= TimeSpan.FromMinutes(60) ? ret : null);
+        var r120 = oc.Ret2h ?? (elapsed >= TimeSpan.FromMinutes(120) ? ret : null);
         var complete = elapsed >= horizon;
 
         double? r = oc.R;
@@ -107,7 +108,7 @@ public sealed class SignalTracker
             else if (first is "t1" or "t2" or "t3") r = s.RewardRatio1 ?? (s.Target1 is { } t ? (t - entry) / riskPerUnit : null);
             else if (complete) r = (price - entry) / riskPerUnit;
         }
-        return oc with { Ret5m = r5, Ret15m = r15, Ret30m = r30, Ret1h = r60, Mfe = mfe, Mae = mae, StopHit = stopHit, Target1Hit = t1, Target2Hit = t2, Target3Hit = t3, FirstEvent = first, R = r, LastPrice = at, Complete = complete };
+        return oc with { Ret5m = r5, Ret15m = r15, Ret30m = r30, Ret1h = r60, Ret2h = r120, Mfe = mfe, Mae = mae, StopHit = stopHit, Target1Hit = t1, Target2Hit = t2, Target3Hit = t3, FirstEvent = first, R = r, LastPrice = at, Complete = complete };
     }
 
     /// <summary>
@@ -134,6 +135,7 @@ public sealed class SignalTracker
         var r15 = oc.Ret15m ?? (elapsed >= TimeSpan.FromMinutes(15) ? ret : null);
         var r30 = oc.Ret30m ?? (elapsed >= TimeSpan.FromMinutes(30) ? ret : null);
         var r60 = oc.Ret1h ?? (elapsed >= TimeSpan.FromMinutes(60) ? ret : null);
+        var r120 = oc.Ret2h ?? (elapsed >= TimeSpan.FromMinutes(120) ? ret : null);
         var complete = elapsed >= horizon;
 
         double? r = oc.R;
@@ -144,7 +146,7 @@ public sealed class SignalTracker
             else if (first is "t1" or "t2" or "t3") r = s.RewardRatio1 ?? (s.Target1 is { } t ? (t - entry) / riskPerUnit : null);
             else if (complete) r = (close - entry) / riskPerUnit;
         }
-        return oc with { Ret5m = r5, Ret15m = r15, Ret30m = r30, Ret1h = r60, Mfe = mfe, Mae = mae, StopHit = stopHit, Target1Hit = t1, Target2Hit = t2, Target3Hit = t3, FirstEvent = first, R = r, LastPrice = closeTime, Complete = complete };
+        return oc with { Ret5m = r5, Ret15m = r15, Ret30m = r30, Ret1h = r60, Ret2h = r120, Mfe = mfe, Mae = mae, StopHit = stopHit, Target1Hit = t1, Target2Hit = t2, Target3Hit = t3, FirstEvent = first, R = r, LastPrice = closeTime, Complete = complete };
     }
 
     public static PerformanceReport Report(IReadOnlyList<SignalWithOutcome> items, DateTimeOffset at, int configVersion)
@@ -169,11 +171,14 @@ public sealed class SignalTracker
         var pos = rs.Where(r => r > 0).Sum();
         var neg = -rs.Where(r => r < 0).Sum();
         double? Avg(Func<SignalWithOutcome, double?> f) { var v = completed.Select(f).Where(x => x is not null).Select(x => x!.Value).ToList(); return v.Count == 0 ? null : v.Average(); }
+        // Horizon returns are known before completion; use every signal that has reached the horizon.
+        double? Positive(Func<SignalWithOutcome, double?> f) { var v = items.Select(f).Where(x => x is not null).Select(x => x!.Value).ToList(); return v.Count == 0 ? null : (double)v.Count(x => x > 0) / v.Count; }
         return new PerformanceBucket(key, items.Count, completed.Count, withPlan.Count,
             withPlan.Count == 0 ? null : (double)withPlan.Count(i => i.Outcome.FirstEvent is "t1" or "t2" or "t3") / withPlan.Count,
             withPlan.Count == 0 ? null : (double)withPlan.Count(i => i.Outcome.FirstEvent == "stop") / withPlan.Count,
             rs.Count == 0 ? null : rs.Average(), rs.Count == 0 ? null : rs.Average(), neg > 0 ? pos / neg : null,
-            Avg(i => i.Outcome.Ret5m), Avg(i => i.Outcome.Ret15m), Avg(i => i.Outcome.Ret30m), Avg(i => i.Outcome.Ret1h),
+            Avg(i => i.Outcome.Ret5m), Avg(i => i.Outcome.Ret15m), Avg(i => i.Outcome.Ret30m), Avg(i => i.Outcome.Ret1h), Avg(i => i.Outcome.Ret2h),
+            Positive(i => i.Outcome.Ret15m), Positive(i => i.Outcome.Ret30m), Positive(i => i.Outcome.Ret1h), Positive(i => i.Outcome.Ret2h),
             completed.Count == 0 ? null : completed.Average(i => i.Outcome.Mfe), completed.Count == 0 ? null : completed.Average(i => i.Outcome.Mae));
     }
 }

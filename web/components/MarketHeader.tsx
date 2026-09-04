@@ -62,6 +62,7 @@ export function MarketHeader() {
           {feed && feed.history.total > 0 && !feed.history.complete ? <span className="warn"> · history {feed.history.loaded}/{feed.history.total}</span> : null}
           {feed && feed.history.failed > 0 ? <span className="warn" title={feed.history.lastError ?? undefined}> · {feed.history.failed} history failed</span> : null}
           {feed && feed.engineErrors > 0 ? <span className="down" title={feed.recentErrors.at(-1)?.error}> · {feed.engineErrors} engine errors</span> : null}
+          {feed && feed.persistence === "memory" ? <span className="warn" title="No database configured: alerts, paper trades and signal history reset on every restart. Set DATABASE_URL."> · no database</span> : null}
         </span>
       </div>
     </header>

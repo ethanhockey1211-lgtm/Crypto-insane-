@@ -27,6 +27,7 @@ if (!builder.Environment.IsDevelopment())
 builder.Services.AddMarketData(builder.Configuration);
 builder.Services.AddAnalytics(builder.Configuration);
 builder.Services.AddPostgresPersistence(builder.Configuration); // before AddSignals: replaces the in-memory stores when configured
+builder.Services.AddSingleton(builder.Configuration.HasPostgres() ? PersistenceInfo.Postgres : PersistenceInfo.Memory);
 builder.Services.AddSignals(builder.Configuration);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 

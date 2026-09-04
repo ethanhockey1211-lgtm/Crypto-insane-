@@ -102,6 +102,7 @@ export function PriceChart({ symbol, levels }: { symbol: string; levels: ChartLe
     if (levels.plan) {
       add(levels.plan.entryMid, "entry", "#e6eaf2");
       add(levels.plan.stop, "stop", "#f0525a", LineStyle.Solid);
+      add(levels.plan.chaseCeiling, "no chase", "#e8b04c");
       add(levels.plan.target1, "T1", "#2ed27c");
       add(levels.plan.target2, "T2", "#2ed27c");
       add(levels.plan.target3, "T3", "#2ed27c");

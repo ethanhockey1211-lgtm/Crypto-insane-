@@ -29,6 +29,8 @@ public sealed class MarketBroadcaster : BackgroundService, IMarketEventObserver
     private readonly ConcurrentDictionary<Symbol, PriceQuote> _pendingQuotes = new();
     private readonly Channel<object> _events = Channel.CreateUnbounded<object>(new UnboundedChannelOptions { SingleReader = true });
 
+    private readonly PersistenceInfo _persistence;
+
     public TimeSpan QuoteFlushInterval { get; init; } = TimeSpan.FromMilliseconds(250);
 
     public MarketBroadcaster(
@@ -38,8 +40,10 @@ public sealed class MarketBroadcaster : BackgroundService, IMarketEventObserver
         IMarketDataProvider provider,
         IOptions<MarketDataOptions> options,
         ILogger<MarketBroadcaster> logger,
+        PersistenceInfo? persistence = null,
         TimeProvider? time = null)
     {
+        _persistence = persistence ?? PersistenceInfo.Memory;
         _hub = hub;
         _reader = reader;
         _universe = universe;
@@ -75,7 +79,8 @@ public sealed class MarketBroadcaster : BackgroundService, IMarketEventObserver
             _universe.Attempts,
             _universe.StatsUnavailable,
             new WarmUpDto(_universe.WarmUp.Total, _universe.WarmUp.Loaded, _universe.WarmUp.Failed, _universe.WarmUp.LastError, _universe.WarmUp.Complete),
-            _reader.RecentErrors.Select(e => new EngineErrorDto(e.At, e.Kind, e.Symbol, e.Error, e.Site)).ToList());
+            _reader.RecentErrors.Select(e => new EngineErrorDto(e.At, e.Kind, e.Symbol, e.Error, e.Site)).ToList(),
+            _persistence.Kind);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

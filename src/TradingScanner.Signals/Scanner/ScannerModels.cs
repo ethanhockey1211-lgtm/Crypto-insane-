@@ -71,10 +71,27 @@ public sealed record TradePlan(
     double RewardRatio1,
     double RewardRatio2,
     double RewardRatio3,
-    IReadOnlyList<string> Basis)
+    IReadOnlyList<string> Basis,
+    /// <summary>Price above which fewer than <see cref="ScoringConfig.ChaseMinRewardRatio"/> R remain to target 1. Do not enter above it.</summary>
+    double ChaseCeiling,
+    /// <summary>Where the current price sits relative to the entry zone and the chase ceiling.</summary>
+    EntryState EntryState)
 {
     public double EntryMid => (EntryLow + EntryHigh) / 2;
+
+    /// <summary>The ceiling wins over the zone: when resistance is close it can sit inside the entry zone, and the part of the zone above it is not enterable.</summary>
+    public static EntryState StateFor(double price, double entryLow, double entryHigh, double chaseCeiling) =>
+        price > chaseCeiling ? EntryState.Chase
+        : price < entryLow ? EntryState.Watch
+        : price <= entryHigh ? EntryState.InZone
+        : EntryState.Late;
 }
+
+/// <summary>
+/// Watch: price is below the entry zone, wait for the trigger. InZone: inside the planned entry. Late: above the zone
+/// but the reward to target 1 is still acceptable. Chase: above the ceiling, the plan's reward is gone.
+/// </summary>
+public enum EntryState : byte { Watch = 0, InZone = 1, Late = 2, Chase = 3 }
 
 public sealed record OverextensionAssessment(
     double Score,

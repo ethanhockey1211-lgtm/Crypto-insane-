@@ -186,6 +186,7 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
         Assert.Empty(feed.RecentErrors);
         Assert.Equal(0, feed.EngineErrors);
         Assert.False(feed.History.Complete); // warm-up disabled in this factory, so it never reports
+        Assert.Equal("memory", feed.Persistence);
 
         // No dashboard in the test web root: the root explains itself instead of redirecting to JSON.
         var root = await client.GetAsync("/");

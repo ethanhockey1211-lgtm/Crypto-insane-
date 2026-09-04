@@ -23,7 +23,7 @@ public class ExplanationServiceTests
     {
         var r = Level("R", 1.40, 3);
         var setup = new SetupClassification(SetupType.BreakoutRetest, Confidence.High, TrendBias.Bullish, ["Retest held: reclaimed 1.4000"], Status(r, BreakoutState.RetestHeld), 1.40);
-        var plan = new TradePlan(1.40, 1.406, "hold above 1.4000", 1.398, 1.397, 1.418, 1.43, 1.45, 0.006, 2.5, 4.5, 7.8, ["stop under the level"]);
+        var plan = new TradePlan(1.40, 1.406, "hold above 1.4000", 1.398, 1.397, 1.418, 1.43, 1.45, 0.006, 2.5, 4.5, 7.8, ["stop under the level"], 1.4096, EntryState.InZone);
         return new Opportunity(Xrp, T.Base, 1.406, 1, 92, new ScoreBreakdown([new ScoreComponent("Momentum", 16, 20, "5m +0.60%")], [], 92, 92, 1), setup, plan,
             new OverextensionAssessment(0.1, false, [], 0.9, 0.8, 0.5, 1.1, 0.02, 0.04, 1.2), ["Retest held"], "A close below 1.398 invalidates", [],
             new OpportunityMetrics(0.001, 0.006, 0.012, 0.02, 0.04, 0.002, 2.1, 0.6, 67, 61, 0.01, 0.007, 1.397, 0.006, 0.9, 1.418, 1.395, 3.2, 5e7, 0.7, "Uptrend", "Range", "Bullish", "Mixed"),

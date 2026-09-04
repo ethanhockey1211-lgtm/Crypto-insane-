@@ -49,7 +49,7 @@ public sealed class BacktestRunner
     {
         var sw = Stopwatch.StartNew();
         var notes = new List<string>();
-        var horizon = request.Horizon ?? TimeSpan.FromHours(1);
+        var horizon = request.Horizon ?? TimeSpan.FromHours(2);
         var dedupe = request.DedupeWindow ?? TimeSpan.FromMinutes(30);
         var scannerOptions = _signals.Scanner;
         var evalTf = _signals.Breakout.Timeframe;
@@ -129,7 +129,7 @@ public sealed class BacktestRunner
                 var entryIdx = r.M1Cursor - 1 + Math.Max(0, request.Costs.LatencyBars);
                 if (entryIdx >= r.M1.Count) continue;
                 var record = SignalTracker.ToRecord(opp, market) with { At = t, Price = (double)r.M1[entryIdx].Open };
-                var outcome = new SignalOutcome(record.Id, null, null, null, null, 0, 0, record.Stop is null ? null : false, record.Target1 is null ? null : false, record.Target2 is null ? null : false, record.Target3 is null ? null : false, "none", null, t, false);
+                var outcome = new SignalOutcome(record.Id, null, null, null, null, null, 0, 0, record.Stop is null ? null : false, record.Target1 is null ? null : false, record.Target2 is null ? null : false, record.Target3 is null ? null : false, "none", null, t, false);
                 r.Active.Add(new SignalWithOutcome(record, outcome));
             }
         }

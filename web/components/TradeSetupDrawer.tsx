@@ -8,6 +8,8 @@ import { PriceChart } from "./PriceChart";
 import { MomentumPanel } from "./MomentumPanel";
 import { PositionCalculator } from "./PositionCalculator";
 
+const ENTRY_STATE: Record<string, string> = { Watch: "Watch: below the zone, wait for the trigger", InZone: "In the entry zone", Late: "Late: above the zone, reward shrinking", Chase: "Do not chase: reward to T1 is gone" };
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="px-3 sm:px-4 py-3 border-b border-line">
@@ -87,6 +89,8 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
                     <Stat k="Target 2" v={<>{fmtPrice(plan.target2)} <span className="text-ink-3">{plan.rewardRatio2.toFixed(1)}R</span></>} cls="up" />
                     <Stat k="Target 3" v={<>{fmtPrice(plan.target3)} <span className="text-ink-3">{plan.rewardRatio3.toFixed(1)}R</span></>} cls="up" />
                     <Stat k="Confirmation" v={<span className="font-sans text-ink-2 text-[11.5px]">{plan.trigger}</span>} />
+                    <Stat k="Do not chase above" v={fmtPrice(plan.chaseCeiling)} cls="warn" />
+                    <Stat k="Entry state" v={<span className={`font-sans ${plan.entryState === "Chase" ? "warn" : plan.entryState === "InZone" ? "up" : plan.entryState === "Late" ? "warn" : "text-ink-2"}`}>{ENTRY_STATE[plan.entryState] ?? plan.entryState}</span>} />
                   </div>
                   {plan.basis.length > 0 && <p className="text-[11px] text-ink-3 mt-2">{plan.basis.join(" · ")}</p>}
                 </>

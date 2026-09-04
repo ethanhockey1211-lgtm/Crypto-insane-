@@ -22,7 +22,7 @@ public class SignalTrackerTests
     }
 
     private static TradePlan Plan(double entry, double stop, double t1, double t2, double t3) =>
-        new(entry, entry, "t", stop, stop, t1, t2, t3, entry - stop, (t1 - entry) / (entry - stop), (t2 - entry) / (entry - stop), (t3 - entry) / (entry - stop), []);
+        new(entry, entry, "t", stop, stop, t1, t2, t3, entry - stop, (t1 - entry) / (entry - stop), (t2 - entry) / (entry - stop), (t3 - entry) / (entry - stop), [], (t1 + 1.5 * stop) / 2.5, EntryState.InZone);
 
     private static ScannerSnapshot Snap(DateTimeOffset at, params Opportunity[] opps) => new(at, Market(), opps, opps.Length, 1);
 
@@ -111,6 +111,11 @@ public class SignalTrackerTests
         Assert.Equal(0.0, report.Overall.TargetBeforeStopRate);
         Assert.Equal((-1 + 0.5) / 2, report.Overall.AvgR!.Value, 9);
         Assert.Equal(0.5, report.Overall.ProfitFactor!.Value, 9);
+        // Horizon hit rates: A was 9.4 (down) at 3 min so its 5m mark is negative; both were up at 20 min (15m mark) and at 60 min.
+        Assert.Equal(1.0, report.Overall.PositiveRate15m!.Value, 9);
+        Assert.Equal(1.0, report.Overall.PositiveRate1h!.Value, 9);
+        Assert.Null(report.Overall.PositiveRate2h); // one-hour horizon in this test: nothing reached 2h
+        Assert.Null(report.Overall.AvgRet2h);
         Assert.Single(report.ByScoreBucket);
         Assert.Equal("80-89", report.ByScoreBucket[0].Key);
         Assert.Contains("too few", report.Note);

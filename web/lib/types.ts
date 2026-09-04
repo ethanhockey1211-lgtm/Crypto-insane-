@@ -27,6 +27,8 @@ export interface ScannerRow {
   /** Component points: momentum, volume, structure, breakout, market, liquidity, riskReward. */
   components: number[];
   penalty: number;
+  entryState: EntryState | null;
+  chaseCeiling: number | null;
 }
 
 export interface AssetState {
@@ -98,6 +100,8 @@ export interface FeedStatus {
   statsUnavailable: number;
   history: { total: number; loaded: number; failed: number; lastError: string | null; complete: boolean };
   recentErrors: { at: string; kind: string; symbol: string | null; error: string; site: string | null }[];
+  /** "postgres" or "memory". In memory, alerts, paper trades and signal history reset on every restart. */
+  persistence: string;
 }
 
 export interface TapeEvent {
@@ -119,7 +123,11 @@ export interface TradePlan {
   entryLow: number; entryHigh: number; trigger: string; invalidation: number; stop: number;
   target1: number; target2: number; target3: number; riskPerUnit: number;
   rewardRatio1: number; rewardRatio2: number; rewardRatio3: number; basis: string[]; entryMid: number;
+  /** Price above which fewer than the configured R remain to target 1. */
+  chaseCeiling: number;
+  entryState: EntryState;
 }
+export type EntryState = "Watch" | "InZone" | "Late" | "Chase";
 export interface Overextension {
   score: number; doNotChase: boolean; flags: string[]; vwapSigma: number | null; ema20DistanceAtr: number | null;
   move5mAtr: number | null; move15mAtr: number | null; move1hPct: number | null; move24hPct: number | null; supportDistanceAtr: number | null;
@@ -178,11 +186,12 @@ export interface PlaceOrderRequest { symbol: string; side: "Buy" | "Sell"; quant
 
 export interface PerformanceBucket {
   key: string; signals: number; completed: number; withPlan: number; targetBeforeStopRate: number | null; stopRate: number | null;
-  avgR: number | null; expectancy: number | null; profitFactor: number | null; avgRet5m: number | null; avgRet15m: number | null; avgRet30m: number | null; avgRet1h: number | null; avgMfe: number | null; avgMae: number | null;
+  avgR: number | null; expectancy: number | null; profitFactor: number | null; avgRet5m: number | null; avgRet15m: number | null; avgRet30m: number | null; avgRet1h: number | null; avgRet2h: number | null;
+  positiveRate15m: number | null; positiveRate30m: number | null; positiveRate1h: number | null; positiveRate2h: number | null; avgMfe: number | null; avgMae: number | null;
 }
 export interface PerformanceReport { at: string; overall: PerformanceBucket; byScoreBucket: PerformanceBucket[]; bySetup: PerformanceBucket[]; byRegime: PerformanceBucket[]; bySymbol: PerformanceBucket[]; byConfidence: PerformanceBucket[]; configVersion: number; note: string }
 export interface SignalRecord { id: string; symbol: string; at: string; setup: string; confidence: string; score: number; price: number; entry: number | null; stop: number | null; target1: number | null; rewardRatio1: number | null; regime: string; btcTrend: string | null; doNotChase: boolean; configVersion: number }
-export interface SignalOutcome { ret5m: number | null; ret15m: number | null; ret30m: number | null; ret1h: number | null; mfe: number; mae: number; stopHit: boolean | null; target1Hit: boolean | null; firstEvent: string; r: number | null; lastPrice: string; complete: boolean }
+export interface SignalOutcome { ret5m: number | null; ret15m: number | null; ret30m: number | null; ret1h: number | null; ret2h: number | null; mfe: number; mae: number; stopHit: boolean | null; target1Hit: boolean | null; firstEvent: string; r: number | null; lastPrice: string; complete: boolean }
 export interface SignalWithOutcome { signal: SignalRecord; outcome: SignalOutcome }
 
 export interface BacktestApiRequest { symbols: string[]; days: number; feeBps: number; slippageBps: number; spreadBps: number; recordThreshold: number; includeBtc: boolean }

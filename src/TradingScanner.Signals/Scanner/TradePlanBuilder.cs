@@ -11,8 +11,9 @@ namespace TradingScanner.Signals.Scanner;
 /// </summary>
 public static class TradePlanBuilder
 {
-    public static TradePlan? Build(SetupClassification setup, AnalyticsProjection p)
+    public static TradePlan? Build(SetupClassification setup, AnalyticsProjection p, ScoringConfig? cfg = null)
     {
+        cfg ??= new ScoringConfig();
         if (setup.Type == SetupType.None) return null;
         var m5 = p.For(Timeframe.M5);
         var s5 = p.Structure.FirstOrDefault(s => s.Timeframe == Timeframe.M5);
@@ -129,8 +130,14 @@ public static class TradePlanBuilder
             : Math.Max(t2 + 0.5 * risk, entry + 5.0 * risk);
         if (setup.Type == SetupType.RangeBreakout) basis.Add("T3 is the measured move: range height projected above the range high");
 
+        // Chase ceiling: the price at which (t1 - p) / (p - stop) equals the minimum acceptable reward to T1.
+        var k = Math.Max(0.1, cfg.ChaseMinRewardRatio);
+        var ceiling = (t1 + k * stop) / (1 + k);
+        var state = TradePlan.StateFor(price, entryLow, entryHigh, ceiling);
+        basis.Add($"do not chase above {LevelBreakoutTracker.P(ceiling)}: under {k:0.0}R to T1 from there");
+
         return new TradePlan(entryLow, entryHigh, trigger, invalidation, stop, t1, t2, t3, risk,
-            (t1 - entry) / risk, (t2 - entry) / risk, (t3 - entry) / risk, basis);
+            (t1 - entry) / risk, (t2 - entry) / risk, (t3 - entry) / risk, basis, ceiling, state);
     }
 
     /// <summary>Use the first resistance at or beyond the minimum acceptable reward instead of blindly targeting through it.</summary>

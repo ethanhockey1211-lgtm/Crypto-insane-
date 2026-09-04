@@ -93,7 +93,7 @@ public class BacktestRunnerTests
     public void Same_bar_touches_count_as_a_stop_and_costs_reduce_r()
     {
         var signal = new SignalRecord(Guid.NewGuid(), "X-USD", T.Base, "Breakout", "High", 80, new Dictionary<string, double>(), 0, 100, 100, 98, 104, 106, 110, 2, "RiskOn", "Bullish", false, 1);
-        var outcome = new SignalOutcome(signal.Id, null, null, null, null, 0, 0, false, false, false, false, "none", null, T.Base, false);
+        var outcome = new SignalOutcome(signal.Id, null, null, null, null, null, 0, 0, false, false, false, false, "none", null, T.Base, false);
         var item = new SignalWithOutcome(signal, outcome);
         var bar = SignalTracker.AdvanceBar(item, high: 105, low: 97.5, close: 103, T.Base.AddMinutes(1), TimeSpan.FromHours(1));
         Assert.Equal("stop", bar.FirstEvent);

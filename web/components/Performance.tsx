@@ -13,7 +13,7 @@ export function BucketTable({ title, rows, labelFn }: { title: string; rows: Per
       <h3 className="eyebrow mb-1">{title}</h3>
       {rows.length === 0 ? <p className="text-ink-3 text-[12px]">No signals yet.</p> : (
         <table className="w-full text-[12px]">
-          <thead><tr className="eyebrow text-left"><th className="font-normal py-1">Bucket</th><th className="font-normal text-right">Signals</th><th className="font-normal text-right">Done</th><th className="font-normal text-right">T1 before stop</th><th className="font-normal text-right">Stopped</th><th className="font-normal text-right">Avg R</th><th className="font-normal text-right">PF</th><th className="font-normal text-right">5m</th><th className="font-normal text-right">15m</th><th className="font-normal text-right">1h</th><th className="font-normal text-right">MFE</th><th className="font-normal text-right">MAE</th></tr></thead>
+          <thead><tr className="eyebrow text-left"><th className="font-normal py-1">Bucket</th><th className="font-normal text-right">Signals</th><th className="font-normal text-right">Done</th><th className="font-normal text-right">T1 before stop</th><th className="font-normal text-right">Stopped</th><th className="font-normal text-right">Avg R</th><th className="font-normal text-right">PF</th><th className="font-normal text-right">5m</th><th className="font-normal text-right">15m</th><th className="font-normal text-right">30m</th><th className="font-normal text-right">1h</th><th className="font-normal text-right">2h</th><th className="font-normal text-right" title="Share of signals that were up 30 minutes later">up @30m</th><th className="font-normal text-right" title="Share of signals that were up 1 hour later">up @1h</th><th className="font-normal text-right">MFE</th><th className="font-normal text-right">MAE</th></tr></thead>
           <tbody>
             {rows.map((b) => (
               <tr key={b.key} className="border-t border-line/50 h-7">
@@ -26,7 +26,11 @@ export function BucketTable({ title, rows, labelFn }: { title: string; rows: Per
                 <td className="num text-right">{num(b.profitFactor)}</td>
                 <td className={`num text-right ${b.avgRet5m == null ? "" : b.avgRet5m > 0 ? "up" : "down"}`}>{fmtPct(b.avgRet5m)}</td>
                 <td className={`num text-right ${b.avgRet15m == null ? "" : b.avgRet15m > 0 ? "up" : "down"}`}>{fmtPct(b.avgRet15m)}</td>
+                <td className={`num text-right ${b.avgRet30m == null ? "" : b.avgRet30m > 0 ? "up" : "down"}`}>{fmtPct(b.avgRet30m)}</td>
                 <td className={`num text-right ${b.avgRet1h == null ? "" : b.avgRet1h > 0 ? "up" : "down"}`}>{fmtPct(b.avgRet1h)}</td>
+                <td className={`num text-right ${b.avgRet2h == null ? "" : b.avgRet2h > 0 ? "up" : "down"}`}>{fmtPct(b.avgRet2h)}</td>
+                <td className={`num text-right ${b.positiveRate30m != null && b.positiveRate30m >= 0.5 ? "up" : ""}`}>{pct(b.positiveRate30m)}</td>
+                <td className={`num text-right ${b.positiveRate1h != null && b.positiveRate1h >= 0.5 ? "up" : ""}`}>{pct(b.positiveRate1h)}</td>
                 <td className="num text-right up">{fmtPct(b.avgMfe)}</td>
                 <td className="num text-right down">{fmtPct(b.avgMae)}</td>
               </tr>

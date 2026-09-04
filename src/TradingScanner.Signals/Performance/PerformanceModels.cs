@@ -27,6 +27,7 @@ public sealed record SignalOutcome(
     double? Ret15m,
     double? Ret30m,
     double? Ret1h,
+    double? Ret2h,
     /// <summary>Best excursion from the signal price, as a fraction.</summary>
     double Mfe,
     /// <summary>Worst excursion from the signal price, as a fraction (≤ 0).</summary>
@@ -59,6 +60,12 @@ public sealed record PerformanceBucket(
     double? AvgRet15m,
     double? AvgRet30m,
     double? AvgRet1h,
+    double? AvgRet2h,
+    /// <summary>Share of completed signals whose return at the horizon was positive (null when none have reached it).</summary>
+    double? PositiveRate15m,
+    double? PositiveRate30m,
+    double? PositiveRate1h,
+    double? PositiveRate2h,
     double? AvgMfe,
     double? AvgMae);
 
@@ -79,6 +86,6 @@ public sealed class PerformanceOptions
     public double RecordThreshold { get; set; } = 60;
     /// <summary>The same symbol+setup is not recorded again within this window.</summary>
     public TimeSpan DedupeWindow { get; set; } = TimeSpan.FromMinutes(30);
-    public TimeSpan Horizon { get; set; } = TimeSpan.FromHours(1);
+    public TimeSpan Horizon { get; set; } = TimeSpan.FromHours(2);
     public int MaxRecords { get; set; } = 20_000;
 }

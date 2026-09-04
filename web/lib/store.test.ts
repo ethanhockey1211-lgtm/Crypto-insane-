@@ -5,7 +5,7 @@ import type { ScannerRow, ScannerStream } from "./types";
 const row = (symbol: string, score: number, price = 1): ScannerRow => ({
   rank: 0, symbol, score, setup: "None", confidence: "Low", price, entry: null, stop: null, target1: null, rr: null,
   r1m: null, r5m: null, r15m: null, r1h: null, r24h: null, relVol: null, breakout: null, doNotChase: false, stale: false,
-  vwapDev: null, volume24h: null, keyLevel: null, trend: null, components: [0, 0, 0, 0, 0, 0, 0], penalty: 0,
+  vwapDev: null, volume24h: null, keyLevel: null, trend: null, components: [0, 0, 0, 0, 0, 0, 0], penalty: 0, entryState: null, chaseCeiling: null,
 });
 
 const stream = (rows: ScannerRow[]): ScannerStream => ({

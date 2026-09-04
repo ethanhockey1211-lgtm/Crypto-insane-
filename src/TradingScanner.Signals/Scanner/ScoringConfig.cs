@@ -37,6 +37,10 @@ public sealed class ScoringConfig
     public double RrNone { get; set; } = 0.8;
     /// <summary>Resistance closer than this many ATRs above price is penalized.</summary>
     public double NearbyResistanceAtr { get; set; } = 1.0;
+    /// <summary>Reward:risk to target 1 below which a High-confidence classification is capped at Medium.</summary>
+    public double MinRewardRatioForHighConfidence { get; set; } = 2.0;
+    /// <summary>The chase ceiling is the price above which less than this reward:risk to target 1 remains.</summary>
+    public double ChaseMinRewardRatio { get; set; } = 1.5;
 }
 
 public sealed class OverextensionConfig

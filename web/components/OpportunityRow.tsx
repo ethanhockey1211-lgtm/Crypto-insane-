@@ -4,6 +4,10 @@ import { useRow } from "@/lib/store";
 import { fmtPct, fmtPrice, fmtR, fmtX, signClass } from "@/lib/format";
 import { ScoreBar } from "./ScoreBar";
 
+const ENTRY_TAG: Record<string, { text: string; cls: string }> = {
+  Watch: { text: "watch", cls: "text-ink-3 border-line" }, InZone: { text: "in zone", cls: "text-up border-up/50" }, Late: { text: "late", cls: "text-warn border-warn/50" }, Chase: { text: "do not chase", cls: "tag-warn" },
+};
+
 const STATE_SHORT: Record<string, string> = {
   Watching: "watch", Approaching: "approach", Attempt: "attempt", Confirmed: "CONFIRMED", Retesting: "retest", RetestHeld: "RETEST HELD", Failed: "failed", Extended: "extended",
 };
@@ -23,6 +27,8 @@ export const OpportunityRow = memo(function OpportunityRow({ symbol, active, onO
   }, [row]);
   if (!row) return null;
   const state = row.breakout ? STATE_SHORT[row.breakout] ?? row.breakout : "";
+  const entry = row.entryState ? ENTRY_TAG[row.entryState] : null;
+  const showChase = row.doNotChase || row.entryState === "Chase";
   const stateClass = row.breakout === "Confirmed" || row.breakout === "RetestHeld" ? "up" : row.breakout === "Failed" ? "down" : row.breakout === "Extended" ? "warn" : "text-ink-3";
   return (
     <tr
@@ -40,13 +46,14 @@ export const OpportunityRow = memo(function OpportunityRow({ symbol, active, onO
         {/* Phones hide the setup column; the setup rides under the symbol instead. */}
         <div className="sm:hidden text-[10.5px] font-normal leading-tight mt-0.5">
           <span className={row.setup === "None" ? "text-ink-3" : "text-ink-2"}>{row.setup === "None" ? "no setup" : row.setup}</span>
-          {row.doNotChase && <span className="warn ml-1.5">· do not chase</span>}
+          {showChase ? <span className="warn ml-1.5">· do not chase</span> : entry && entry.text !== "watch" ? <span className={`ml-1.5 ${entry.cls.split(" ")[0]}`}>· {entry.text}</span> : null}
         </div>
       </td>
       <td className="px-2"><ScoreBar components={row.components} penalty={row.penalty} total={row.score} /></td>
       <td className="px-2 whitespace-nowrap hidden sm:table-cell">
         <span className={row.setup === "None" ? "text-ink-3" : "text-ink"}>{row.setup === "None" ? "—" : row.setup}</span>
-        {row.doNotChase && <span className="tag tag-warn ml-1.5">do not chase</span>}
+        {showChase ? <span className="tag tag-warn ml-1.5" title={row.chaseCeiling != null ? `Ceiling ${row.chaseCeiling}` : undefined}>do not chase</span>
+          : entry ? <span className={`tag ml-1.5 ${entry.cls}`} title={row.chaseCeiling != null ? `Do not chase above ${row.chaseCeiling}` : undefined}>{entry.text}</span> : null}
       </td>
       <td className={`px-2 text-[11px] whitespace-nowrap hidden md:table-cell ${stateClass}`}>{state}</td>
       <td className="num px-2 text-right"><span ref={priceRef} className="inline-block px-1 -mx-1 rounded-[2px]">{fmtPrice(row.price)}</span></td>

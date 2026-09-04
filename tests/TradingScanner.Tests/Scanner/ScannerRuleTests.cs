@@ -163,11 +163,16 @@ public class TradePlanBuilderTests
         Assert.True(plan.Target2 > plan.Target1 && plan.Target3 > plan.Target2);
         Assert.Equal((plan.Target1 - plan.EntryMid) / plan.RiskPerUnit, plan.RewardRatio1, 9);
         Assert.Equal(1.5, plan.RewardRatio1, 6);
+        // Chase ceiling: the price where (T1 - p) / (p - stop) = 1.5 → (1.412 + 1.5 × 1.397) / 2.5.
+        Assert.Equal(1.403, plan.ChaseCeiling, 9);
+        Assert.Contains(plan.Basis, b => b.Contains("do not chase above 1.4030"));
+        Assert.Equal(EntryState.Chase, plan.EntryState); // price 1.406 is already past it: this plan is not enterable here
 
         // With the nearest resistance beyond the ideal 2R target, the target is not capped.
         var clear = TradePlanBuilder.Build(setup, Proj(price: 1.406, s5: Struct(close: 1.406, levels: [R, Level("R2", 1.418)])))!;
         Assert.Equal(1.415, clear.Target1, 9);
         Assert.DoesNotContain(clear.Basis, b => b.Contains("T1 capped"));
+        Assert.Equal((1.415 + 1.5 * 1.397) / 2.5, clear.ChaseCeiling, 9);
         Assert.Contains("holding above 1.4000", plan.Trigger);
     }
 
@@ -178,6 +183,48 @@ public class TradePlanBuilderTests
         var plan = TradePlanBuilder.Build(setup, Proj(price: 1.43))!;
         Assert.Contains("wait for a retest", plan.Trigger);
         Assert.Equal(1.41, plan.EntryHigh, 9);
+        Assert.Equal(EntryState.Chase, plan.EntryState);
+        Assert.True(plan.ChaseCeiling < 1.43 && plan.ChaseCeiling > plan.EntryLow, $"ceiling {plan.ChaseCeiling}");
+    }
+
+    [Fact]
+    public void Entry_state_follows_the_price_through_the_zone_and_the_ceiling()
+    {
+        Assert.Equal(EntryState.Watch, TradePlan.StateFor(1.39, 1.40, 1.41, 1.42));
+        Assert.Equal(EntryState.InZone, TradePlan.StateFor(1.40, 1.40, 1.41, 1.42));
+        Assert.Equal(EntryState.InZone, TradePlan.StateFor(1.41, 1.40, 1.41, 1.42));
+        Assert.Equal(EntryState.Late, TradePlan.StateFor(1.415, 1.40, 1.41, 1.42));
+        Assert.Equal(EntryState.Chase, TradePlan.StateFor(1.421, 1.40, 1.41, 1.42));
+        Assert.Equal(EntryState.Chase, TradePlan.StateFor(1.405, 1.40, 1.41, 1.403)); // ceiling inside the zone: the zone above it is not enterable
+
+        var cfg = new ScoringConfig { ChaseMinRewardRatio = 2.0 };
+        var setup = new SetupClassification(SetupType.Breakout, Confidence.High, TrendBias.Bullish, [], Status(R, BreakoutState.Confirmed), 1.40);
+        var plan = TradePlanBuilder.Build(setup, Proj(price: 1.401, s5: Struct(close: 1.401, levels: [R, Level("R2", 1.45)])), cfg)!;
+        Assert.Equal((plan.Target1 + 2.0 * plan.Stop) / 3.0, plan.ChaseCeiling, 9);
+        Assert.Equal(EntryState.InZone, plan.EntryState);
+    }
+
+    [Fact]
+    public void High_confidence_requires_an_acceptable_reward_to_target_one()
+    {
+        var cfg = new ScoringConfig();
+        var high = new SetupClassification(SetupType.Breakout, Confidence.High, TrendBias.Bullish, ["three confirmations"], Status(R, BreakoutState.Confirmed), 1.40);
+
+        // 1.412 resistance caps T1 at 1.5R: textbook evidence, poor reward → Medium, and it says why.
+        var capped = TradePlanBuilder.Build(high, Proj(price: 1.406, s5: Struct(close: 1.406, levels: [R, Level("R2", 1.412), Level("R3", 1.45)])), cfg)!;
+        var result = OpportunityEvaluator.CapConfidence(high, capped, cfg);
+        Assert.Equal(Confidence.Medium, result.Confidence);
+        Assert.Contains(result.Evidence, e => e.Contains("capped at Medium") && e.Contains("1.5R"));
+        Assert.Equal("three confirmations", result.Evidence[0]);
+
+        // Clear air above: 2R target stands, confidence stands.
+        var clear = TradePlanBuilder.Build(high, Proj(price: 1.406, s5: Struct(close: 1.406, levels: [R, Level("R2", 1.418)])), cfg)!;
+        Assert.Same(high, OpportunityEvaluator.CapConfidence(high, clear, cfg));
+
+        // No plan at all cannot be High either; Medium and Low are never touched.
+        Assert.Equal(Confidence.Medium, OpportunityEvaluator.CapConfidence(high, null, cfg).Confidence);
+        var low = high with { Confidence = Confidence.Low };
+        Assert.Same(low, OpportunityEvaluator.CapConfidence(low, capped, cfg));
     }
 
     [Fact]

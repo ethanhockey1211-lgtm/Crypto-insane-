@@ -100,7 +100,7 @@ public sealed class PostgresRepositoryTests : IAsyncLifetime
         Xunit.Skip.If(Skip, "TS_TEST_POSTGRES not set");
         var repo = new PostgresSignalRepository(_db!);
         var signal = new SignalRecord(Guid.NewGuid(), "SOL-USD", T.Base, "Breakout", "High", 84, new Dictionary<string, double> { ["Momentum"] = 15.5 }, 2, 150.25, 150.3, 148.9, 153, 155, 158, 1.93, "RiskOn", "Bullish", false, 1);
-        var outcome = new SignalOutcome(signal.Id, null, null, null, null, 0, 0, false, false, false, false, "none", null, T.Base, false);
+        var outcome = new SignalOutcome(signal.Id, null, null, null, null, null, 0, 0, false, false, false, false, "none", null, T.Base, false);
         await repo.SaveAsync(signal, outcome, default);
         Assert.Single(await repo.ListIncompleteAsync(default));
 

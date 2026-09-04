@@ -50,7 +50,7 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | `GET /api/performance`, `GET /api/performance/signals?limit=&symbol=` | Signal outcome report and recent signals with outcomes |
 | `POST /api/backtest` | Replay a few symbols over recent history with cost assumptions; returns signals plus gross and net reports |
 | `POST /api/scanner/{symbol}/explain` | AI narrative of the engine's numbers. 503 with a clear message when no `ANTHROPIC_API_KEY` is configured |
-| `GET /api/system/feed` | Provider status per connection, last feed event age, universe size, startup phase and error, stats/history warm-up counts, recent engine-loop exceptions |
+| `GET /api/system/feed` | Provider status per connection, last feed event age, universe size, startup phase and error, stats/history warm-up counts, recent engine-loop exceptions, persistence kind (`postgres` or `memory`) |
 | `GET /api/system/metrics` | Ingestion counters: messages, reconnects, gaps, latency, channel depth |
 | `GET /health/live`, `GET /health/ready` | Liveness / readiness (ready = feed connected and fresh) |
 | `/hubs/market` (SignalR) | `quotes` batches every 250 ms, `candle` closes for subscribed groups, `feed` status, `gap` notices, `scanner` ranked snapshot each cycle, `tape` events, `alert` firings |

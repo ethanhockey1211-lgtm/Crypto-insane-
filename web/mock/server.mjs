@@ -21,7 +21,7 @@ const rows = symbols.map((s, i) => {
   return { rank: 0, symbol: s, score: Math.round(score), setup, confidence: score > 75 ? "High" : score > 55 ? "Medium" : "Low", price,
     entry: setup === "None" ? null : price * 0.999, stop: setup === "None" ? null : stop, target1: setup === "None" ? null : t1, rr: setup === "None" ? null : (t1 - price*0.999)/(price*0.999 - stop),
     r1m: (rnd()-0.5)*0.004, r5m: r5, r15m: r5*1.8, r1h: r5*3, r24h: r24, relVol: +(0.4 + rnd()*3).toFixed(2), breakout: states[i % states.length],
-    doNotChase: dnc, stale: i === 27, vwapDev: (rnd()-0.4)*0.03, volume24h: 2e6 + rnd()*8e8, keyLevel: price * 1.004, trend: rnd() > 0.5 ? "Bullish" : "Mixed", components: comps, penalty };
+    doNotChase: dnc, entryState: dnc ? "Chase" : i % 3 === 0 ? "InZone" : i % 3 === 1 ? "Late" : "Watch", chaseCeiling: price * 1.012, stale: i === 27, vwapDev: (rnd()-0.4)*0.03, volume24h: 2e6 + rnd()*8e8, keyLevel: price * 1.004, trend: rnd() > 0.5 ? "Bullish" : "Mixed", components: comps, penalty };
 }).sort((a,b) => b.score - a.score).map((r,i) => ({ ...r, rank: i+1 }));
 
 const market = { at: new Date().toISOString(), regime: "RiskOn", altsFavorable: true,
@@ -40,7 +40,7 @@ const tape = [
 function opportunity(symbol) {
   const r = rows.find(x => x.symbol === symbol);
   if (!r) return null;
-  const plan = r.entry == null ? null : { entryLow: r.entry*0.999, entryHigh: r.entry*1.002, entryMid: r.entry, trigger: `5m close holding above ${r.keyLevel.toFixed(4)}`, invalidation: r.stop*1.001, stop: r.stop, target1: r.target1, target2: r.target1*1.01, target3: r.target1*1.025, riskPerUnit: r.entry - r.stop, rewardRatio1: r.rr, rewardRatio2: r.rr*1.6, rewardRatio3: r.rr*2.4, basis: ["stop sits 0.3 ATR under the breakout level"] };
+  const plan = r.entry == null ? null : { entryLow: r.entry*0.999, entryHigh: r.entry*1.002, entryMid: r.entry, trigger: `5m close holding above ${r.keyLevel.toFixed(4)}`, invalidation: r.stop*1.001, stop: r.stop, target1: r.target1, target2: r.target1*1.01, target3: r.target1*1.025, riskPerUnit: r.entry - r.stop, rewardRatio1: r.rr, rewardRatio2: r.rr*1.6, rewardRatio3: r.rr*2.4, basis: ["stop sits 0.3 ATR under the breakout level"], chaseCeiling: r.chaseCeiling, entryState: r.entryState };
   const names = ["Momentum","Volume","Structure","Breakout","Market","Liquidity","RiskReward"], maxes = [20,20,20,15,10,10,15];
   return { symbol: { value: symbol }, at: new Date().toISOString(), price: r.price, rank: r.rank, score: r.score,
     breakdown: { components: names.map((n,i)=>({ name: n, points: r.components[i], max: maxes[i], evidence: "mock evidence" })), penalties: r.penalty ? [{ name: "Overextension", points: r.penalty, max: 20, evidence: "mock: 2.3σ above VWAP" }] : [], raw: r.score + r.penalty, total: r.score, configVersion: 1 },
@@ -65,7 +65,7 @@ http.createServer((req, res) => {
   else if (u.pathname === "/api/scanner/tape") body = tape;
   else if (u.pathname === "/api/scanner/market") body = market;
   else if (u.pathname.startsWith("/api/scanner/")) body = opportunity(decodeURIComponent(u.pathname.split("/")[3]));
-  else if (u.pathname === "/api/system/feed") body = { provider: "mock", exchange: "Mock Exchange", status: "Disconnected", live: false, connections: {}, lastEventAgeMs: 12000, lastTradeAgeMs: null, universeSize: rows.length, universeSelectedAt: null, engineErrors: 0, startupPhase: "Streaming", startupError: null, startupAttempts: 0, statsUnavailable: 0, history: { total: rows.length, loaded: rows.length, failed: 0, lastError: null, complete: true }, recentErrors: [] };
+  else if (u.pathname === "/api/system/feed") body = { provider: "mock", exchange: "Mock Exchange", status: "Disconnected", live: false, connections: {}, lastEventAgeMs: 12000, lastTradeAgeMs: null, universeSize: rows.length, universeSelectedAt: null, engineErrors: 0, startupPhase: "Streaming", startupError: null, startupAttempts: 0, statsUnavailable: 0, history: { total: rows.length, loaded: rows.length, failed: 0, lastError: null, complete: true }, recentErrors: [], persistence: "memory" };
   else if (/^\/api\/market\/[^/]+\/candles$/.test(u.pathname)) body = candles(decodeURIComponent(u.pathname.split("/")[3]), u.searchParams.get("tf") ?? "5m");
   res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Content-Type", "application/json");
   if (body === null) { res.statusCode = 404; res.end("{}"); return; }

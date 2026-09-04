@@ -16,17 +16,33 @@ public static class OpportunityEvaluator
         var p = input.Projection;
         var setup = SetupClassifier.Classify(p, input.Breakouts, market);
         var over = OverextensionAnalyzer.Assess(p, _o.Overextension);
-        var plan = TradePlanBuilder.Build(setup, p);
+        var plan = TradePlanBuilder.Build(setup, p, _o.Scoring);
+        setup = CapConfidence(setup, plan, _o.Scoring);
         var spread = input.Quote.SpreadBps;
         var breakdown = OpportunityScorer.Score(p, setup, plan, over, input.Breakouts, market, double.IsNaN(spread) ? null : spread, input.Volume24hQuote, _o.Scoring);
         var metrics = BuildMetrics(input, btcReturns, spread);
         var why = BuildWhy(setup, breakdown, over);
         var invalidation = BuildInvalidation(setup, plan);
-        var risks = BuildRisks(breakdown, over, market);
+        var risks = BuildRisks(breakdown, over, market, plan, _o.Scoring);
         var change = previous is null ? null : Diff(previous, breakdown);
         var age = now - input.Quote.ExchangeTime;
         var quality = new DataQuality(age > _o.StaleQuoteThreshold, (long)age.TotalMilliseconds, input.HistoryLoaded, input.Quote.Provider, input.Quote.Exchange);
         return new Opportunity(input.Symbol, p.AsOf, p.Price, 0, breakdown.Total, breakdown, setup, plan, over, why, invalidation, risks, metrics, change, quality);
+    }
+
+    /// <summary>
+    /// Confidence is about the setup's evidence; reward is about the plan. A setup can be textbook and still not be
+    /// worth taking because the next resistance is too close. High confidence therefore requires an acceptable
+    /// reward to target 1, otherwise it is capped at Medium and says so.
+    /// </summary>
+    public static SetupClassification CapConfidence(SetupClassification setup, TradePlan? plan, ScoringConfig cfg)
+    {
+        if (setup.Confidence != Confidence.High || setup.Type == SetupType.None) return setup;
+        var min = cfg.MinRewardRatioForHighConfidence;
+        if (plan is null)
+            return setup with { Confidence = Confidence.Medium, Evidence = [.. setup.Evidence, "Confidence capped at Medium: no plan could be built"] };
+        if (plan.RewardRatio1 >= min) return setup;
+        return setup with { Confidence = Confidence.Medium, Evidence = [.. setup.Evidence, $"Confidence capped at Medium: {plan.RewardRatio1:0.0}R to T1 is under the {min:0.0}R required"] };
     }
 
     private static OpportunityMetrics BuildMetrics(ScanInput input, double[]? btcReturns, double spread)
@@ -93,10 +109,14 @@ public static class OpportunityEvaluator
         } + (plan.Basis.Count > 0 ? $" Stop {LevelBreakoutTracker.P(plan.Stop)}: {plan.Basis[0]}." : "");
     }
 
-    private static List<string> BuildRisks(ScoreBreakdown b, OverextensionAssessment over, MarketContext market)
+    private static List<string> BuildRisks(ScoreBreakdown b, OverextensionAssessment over, MarketContext market, TradePlan? plan, ScoringConfig cfg)
     {
         var risks = new List<string>();
         if (over.DoNotChase) risks.Add("DO NOT CHASE: " + (over.Flags.Count > 0 ? string.Join("; ", over.Flags) : "risk/reward has deteriorated"));
+        if (plan is { EntryState: EntryState.Chase })
+            risks.Add($"DO NOT CHASE ABOVE {LevelBreakoutTracker.P(plan.ChaseCeiling)}: from the current price fewer than {cfg.ChaseMinRewardRatio:0.0}R remain to T1");
+        else if (plan is { EntryState: EntryState.Late })
+            risks.Add($"Late entry: above the planned zone; ceiling {LevelBreakoutTracker.P(plan.ChaseCeiling)} before the reward to T1 is gone");
         foreach (var pnl in b.Penalties.OrderByDescending(x => x.Points)) if (pnl.Points >= 2) risks.Add($"{pnl.Name} −{pnl.Points:F0}: {pnl.Evidence}");
         if (!market.AltsFavorable) risks.Add($"Regime {market.Regime}: altcoin conditions do not favor aggressive entries");
         return risks;

@@ -59,7 +59,9 @@ public sealed record FeedStatusDto(
     int StartupAttempts,
     int StatsUnavailable,
     WarmUpDto History,
-    IReadOnlyList<EngineErrorDto> RecentErrors);
+    IReadOnlyList<EngineErrorDto> RecentErrors,
+    /// <summary>"postgres" when a database is configured, otherwise "memory" (alerts, paper trades and signals reset on restart).</summary>
+    string Persistence);
 
 /// <summary>REST history warm-up progress: symbols loaded/failed out of the universe, and the last failure text.</summary>
 public sealed record WarmUpDto(int Total, int Loaded, int Failed, string? LastError, bool Complete);
