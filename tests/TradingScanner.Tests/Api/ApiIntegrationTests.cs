@@ -187,6 +187,12 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
         Assert.Equal(0, feed.EngineErrors);
         Assert.False(feed.History.Complete); // warm-up disabled in this factory, so it never reports
 
+        // No dashboard in the test web root: the root explains itself instead of redirecting to JSON.
+        var root = await client.GetAsync("/");
+        Assert.Equal(HttpStatusCode.OK, root.StatusCode);
+        Assert.Equal("text/html", root.Content.Headers.ContentType!.MediaType);
+        Assert.Contains("no dashboard", await root.Content.ReadAsStringAsync());
+
         var ready = await client.GetAsync("/health/ready");
         Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
         using var doc = JsonDocument.Parse(await ready.Content.ReadAsStringAsync());

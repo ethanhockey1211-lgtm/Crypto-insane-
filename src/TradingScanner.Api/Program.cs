@@ -107,7 +107,23 @@ app.MapHub<MarketHub>("/hubs/market");
 if (hasDashboard)
     app.MapFallbackToFile("{*path:regex(^(?!api/|hubs/|health/).*$)}", "index.html");
 else
-    app.MapGet("/", () => Results.Redirect("/api/system/feed"));
+    app.MapGet("/", (MarketBroadcaster broadcaster) =>
+    {
+        // Bare API image (tests, or a build that skipped the web stage). Say so in words rather than bouncing a
+        // person who typed the root URL to a JSON readout they were not looking for.
+        var feed = broadcaster.BuildFeedStatus();
+        var html = $"""
+            <!doctype html><meta charset=utf-8><title>TradingScanner API</title>
+            <body style="font:15px/1.5 system-ui;max-width:42rem;margin:3rem auto;padding:0 1rem;color:#222">
+            <h1 style="font-size:1.4rem">TradingScanner API is running, but this build has no dashboard.</h1>
+            <p>The engine is <b>{feed.Status}</b> with <b>{feed.UniverseSize}</b> symbols (startup phase: {feed.StartupPhase}).</p>
+            <p>The dashboard is served from this same address when the image is built from the repository's root
+            <code>Dockerfile</code>, which compiles the web app into <code>wwwroot</code>. This image was built without it.
+            Check the deploy log for the web build stage.</p>
+            <p>Machine-readable status: <a href="/api/system/feed">/api/system/feed</a></p>
+            """;
+        return Results.Content(html, "text/html; charset=utf-8");
+    });
 
 app.Run();
 
