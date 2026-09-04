@@ -1,6 +1,9 @@
 **/bin
 **/obj
-web
+web/node_modules
+web/.next
+web/out
+web/mock
 tests
 docs
 .git

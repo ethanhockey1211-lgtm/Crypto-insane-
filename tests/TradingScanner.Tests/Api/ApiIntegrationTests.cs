@@ -62,7 +62,7 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    public sealed class Factory : WebApplicationFactory<Program>
+    public class Factory : WebApplicationFactory<Program>
     {
         public FakeProvider Provider { get; } = new();
 
@@ -234,5 +234,64 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
         {
             await connection.DisposeAsync();
         }
+    }
+
+}
+
+/// <summary>
+/// With a built dashboard in the web root, the API serves it from its own origin: index for the root and unknown
+/// client routes, real static files with their own content types, and the JSON API untouched. Static files must be
+/// served before routing or the catch-all fallback swallows every asset request (a bug caught on first deploy).
+/// </summary>
+public class DashboardHostingTests : IDisposable
+{
+    private sealed class DashboardFactory : ApiIntegrationTests.Factory
+    {
+        public string WebRoot { get; } = Directory.CreateTempSubdirectory("tradingscanner-web").FullName;
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            Directory.CreateDirectory(Path.Combine(WebRoot, "_next", "static", "css"));
+            File.WriteAllText(Path.Combine(WebRoot, "index.html"), "<!doctype html><title>TradingScanner</title><div id=app></div>");
+            File.WriteAllText(Path.Combine(WebRoot, "_next", "static", "css", "app.css"), "body{margin:0}");
+            builder.UseWebRoot(WebRoot);
+        }
+    }
+
+    private readonly DashboardFactory _factory = new();
+
+    [Fact]
+    public async Task Dashboard_assets_and_api_are_served_from_one_origin()
+    {
+        using var client = _factory.CreateClient();
+        await _factory.Provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var root = await client.GetAsync("/");
+        Assert.Equal(HttpStatusCode.OK, root.StatusCode);
+        Assert.Equal("text/html", root.Content.Headers.ContentType!.MediaType);
+        Assert.Contains("TradingScanner", await root.Content.ReadAsStringAsync());
+
+        var css = await client.GetAsync("/_next/static/css/app.css");
+        Assert.Equal(HttpStatusCode.OK, css.StatusCode);
+        Assert.Equal("text/css", css.Content.Headers.ContentType!.MediaType);
+        Assert.Equal("body{margin:0}", await css.Content.ReadAsStringAsync());
+
+        var clientRoute = await client.GetAsync("/alerts");
+        Assert.Equal(HttpStatusCode.OK, clientRoute.StatusCode);
+        Assert.Equal("text/html", clientRoute.Content.Headers.ContentType!.MediaType);
+
+        var feed = await client.GetAsync("/api/system/feed");
+        Assert.Equal(HttpStatusCode.OK, feed.StatusCode);
+        Assert.Equal("application/json", feed.Content.Headers.ContentType!.MediaType);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/does-not-exist")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/live")).StatusCode);
+    }
+
+    public void Dispose()
+    {
+        _factory.Dispose();
+        try { Directory.Delete(_factory.WebRoot, true); } catch (IOException) { }
     }
 }

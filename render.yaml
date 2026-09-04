@@ -1,8 +1,9 @@
-# Render Blueprint: one API service, one web service, one Postgres database.
-# Apply with "New → Blueprint" in the Render dashboard, or point an existing Docker web service at the Dockerfile.
+# Render Blueprint: one web service (API + dashboard in a single image) and one Postgres database.
+# Apply with "New → Blueprint" in the Render dashboard. An existing Docker web service pointed at ./Dockerfile
+# is equivalent; add the database and ConnectionStrings__Postgres to it by hand.
 services:
   - type: web
-    name: tradingscanner-api
+    name: tradingscanner
     runtime: docker
     plan: starter
     dockerfilePath: ./Dockerfile
@@ -15,21 +16,9 @@ services:
         fromDatabase:
           name: tradingscanner-db
           property: connectionString
-      - key: Cors__Origins__0
-        value: https://tradingscanner-web.onrender.com
       # Optional. Enables the AI narrative; never exposed to the browser.
       - key: ANTHROPIC_API_KEY
         sync: false
-
-  - type: web
-    name: tradingscanner-web
-    runtime: docker
-    plan: starter
-    dockerfilePath: ./web/Dockerfile
-    dockerContext: ./web
-    envVars:
-      - key: NEXT_PUBLIC_API_URL
-        value: https://tradingscanner-api.onrender.com
 
 databases:
   - name: tradingscanner-db

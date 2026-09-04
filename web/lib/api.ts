@@ -1,6 +1,7 @@
 import type { Explanation, BacktestApiRequest, BacktestResult, AlertEvent, AlertFieldInfo, AlertRule, AlertRuleRequest, CandlesResponse, FeedStatus, Opportunity, PaperAccount, PaperAccountView, PaperOrder, PaperPosition, PaperPositionView, PaperStats, PerformanceReport, PlaceOrderRequest, ScannerStream, SignalWithOutcome, TapeEvent } from "./types";
 
-export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5080").replace(/\/$/, "");
+// Empty base = same origin (the API serves the built dashboard). `next dev` on :3000 talks to the API on :5080.
+export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:5080" : "")).replace(/\/$/, "");
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });

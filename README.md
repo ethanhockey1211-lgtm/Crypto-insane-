@@ -95,12 +95,17 @@ engine's computed numbers and is told to invent nothing; every narrative carries
 
 ## Deploy (Render or any Docker host)
 
-`Dockerfile` builds the API (multi-stage .NET 8, binds to the injected `PORT`); `web/Dockerfile` builds the Next.js
-app in standalone mode with `NEXT_PUBLIC_API_URL` baked in at build time. `render.yaml` is a Render Blueprint that
-creates both services and a Postgres database, passing the database URL as `ConnectionStrings__Postgres` (postgres://
-URLs are converted for Npgsql automatically) and the web origin as `Cors__Origins__0`. On Render: New → Blueprint →
-this repository, or set an existing service's runtime to Docker with the matching Dockerfile path and context. A
-service left on auto-detect fails within seconds because the repository holds both a .NET solution and a Node app.
+One image is the whole product. The root `Dockerfile` builds the dashboard as a static export (`NEXT_OUTPUT=export`)
+and the API serves it from `wwwroot` on its own origin, so `https://your-service/` is the dashboard and
+`https://your-service/api/...` is the API. No second service, no CORS configuration, no API URL to bake in.
+`render.yaml` is a Render Blueprint that creates that service plus a Postgres database, passing the database URL as
+`ConnectionStrings__Postgres` (postgres:// URLs are converted for Npgsql automatically). On Render: New → Blueprint →
+this repository, or set an existing service's runtime to Docker with Dockerfile path `./Dockerfile` and context `.`.
+A service left on auto-detect fails within seconds because the repository holds both a .NET solution and a Node app.
+
+`web/Dockerfile` still builds the dashboard as its own Node service (standalone mode, `NEXT_PUBLIC_API_URL` baked
+in at build time) for deployments that want the two split; then set the dashboard origin as `Cors__Origins__0` on
+the API.
 
 ## Run the dashboard
 

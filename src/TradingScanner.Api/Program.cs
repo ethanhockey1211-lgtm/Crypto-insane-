@@ -67,6 +67,18 @@ builder.Services.AddHealthChecks()
 var app = builder.Build();
 app.Services.GetRequiredService<SignalsEngine>(); // subscribe to analytics before the first bar closes
 
+// The dashboard (web/, built with NEXT_OUTPUT=export) is served from wwwroot when present, so the API's own
+// origin is the whole product. Without it (tests, bare API deployments) "/" still points at the status readout.
+// Static files must run BEFORE routing: with the implicit UseRouting at the head of the pipeline, the catch-all
+// fallback endpoint would match every asset path first and the static file middleware would skip them.
+var dashboardIndex = Path.Combine(app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"), "index.html");
+var hasDashboard = File.Exists(dashboardIndex);
+if (hasDashboard)
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
+app.UseRouting();
 app.UseCors();
 app.UseRateLimiter();
 
@@ -92,7 +104,10 @@ app.MapPerformanceEndpoints();
 app.MapBacktestEndpoints();
 app.MapExplainEndpoints();
 app.MapHub<MarketHub>("/hubs/market");
-app.MapGet("/", () => Results.Redirect("/api/system/feed"));
+if (hasDashboard)
+    app.MapFallbackToFile("{*path:regex(^(?!api/|hubs/|health/).*$)}", "index.html");
+else
+    app.MapGet("/", () => Results.Redirect("/api/system/feed"));
 
 app.Run();
 
