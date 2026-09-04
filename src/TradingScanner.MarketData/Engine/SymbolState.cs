@@ -137,14 +137,14 @@ public sealed class SymbolState
         {
             var agg = _aggregators[i];
             var target = Series(agg.Target);
-            agg.Reset();
+            // Everything up to the target's last closed bar is covered by history. The floor makes the aggregator
+            // ignore base bars inside those buckets permanently, not just during this replay: the 1m history can
+            // end earlier than the 5m history does (the exchange publishes granularities independently and omits
+            // empty minutes), and the clock then fills synthetic 1m bars inside a 5m bucket we already hold.
             var resumeFrom = target.Last is { } last ? last.OpenTime + agg.Target.Duration() : DateTimeOffset.MinValue;
+            agg.Reset(resumeFrom);
             _scratch.Clear();
-            foreach (var c in m1)
-            {
-                if (c.OpenTime < resumeFrom) continue;
-                agg.OnBaseCandleClosed(c, _scratch);
-            }
+            foreach (var c in m1) agg.OnBaseCandleClosed(c, _scratch);
             foreach (var c in _scratch)
             {
                 target.Append(c);

@@ -169,6 +169,42 @@ public class SymbolStateTests
         // The M3 forming bar covers 12:00-12:03 and includes live minute 0.
         Assert.Equal(T.Base, s.Series(Timeframe.M3).Forming!.Value.OpenTime);
     }
+
+    [Fact]
+    public void Synthetic_fill_after_history_does_not_reclose_buckets_the_higher_timeframe_history_already_holds()
+    {
+        // Production failure (VVV-USD, WIF-USD, SPX-USD): 5m history is complete through 12:05 but 1m history ends at
+        // 12:06 (empty minutes omitted, newest minutes not yet published). No trade arrives; the clock fills 1m bars
+        // from 12:07 on. The 5m aggregator must not rebuild and re-close the 12:05 bucket.
+        var s = New();
+        var closed = new List<Candle>();
+        var m1 = Enumerable.Range(0, 7).Select(i => T.Candle("BTC-USD", Timeframe.M1, T.Base.AddMinutes(i), 100, 101, 99, 100, source: CandleSource.Historical)).ToList();
+        var m5 = Enumerable.Range(0, 2).Select(i => T.Candle("BTC-USD", Timeframe.M5, T.Base.AddMinutes(5 * i), 100, 102, 98, 100, source: CandleSource.Historical)).ToList();
+        s.ApplyHistory(Timeframe.M1, m1);
+        s.ApplyHistory(Timeframe.M5, m5);
+        s.RebuildDerived(closed);
+        Assert.Equal(T.Base.AddMinutes(5), s.Series(Timeframe.M5).Last!.Value.OpenTime);
+
+        closed.Clear();
+        s.OnClock(T.Base.AddMinutes(12).AddSeconds(3), closed); // fills synthetic 12:07 .. 12:11
+
+        Assert.Equal(5, closed.Count(c => c.Timeframe == Timeframe.M1 && c.IsSynthetic));
+        Assert.DoesNotContain(closed, c => c.Timeframe == Timeframe.M5);
+        Assert.Equal(2, s.Series(Timeframe.M5).Count);
+        Assert.Equal(T.Base.AddMinutes(10), s.Series(Timeframe.M5).Forming!.Value.OpenTime);
+        Assert.Equal(2, s.Series(Timeframe.M5).Forming!.Value.TradeCount + 2); // synthetic bars carry no trades
+
+        // The 1m fill that started inside a bucket older than the newest 5m bar (WIF-USD variant) is ignored too.
+        var w = New();
+        w.ApplyHistory(Timeframe.M1, m1.Take(3).ToList());          // 1m ends at 12:02
+        w.ApplyHistory(Timeframe.M5, m5);                           // 5m holds 12:00 and 12:05
+        w.RebuildDerived(closed);
+        closed.Clear();
+        w.OnClock(T.Base.AddMinutes(11).AddSeconds(3), closed);     // fills 12:03 .. 12:10
+        Assert.DoesNotContain(closed, c => c.Timeframe == Timeframe.M5);
+        Assert.Equal(T.Base.AddMinutes(10), w.Series(Timeframe.M5).Forming!.Value.OpenTime);
+        Assert.Equal(2, w.Series(Timeframe.M5).Count);
+    }
 }
 
 file static class SeriesExt

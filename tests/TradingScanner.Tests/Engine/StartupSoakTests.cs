@@ -25,16 +25,21 @@ public class StartupSoakTests
     private readonly ITestOutputHelper _out;
     public StartupSoakTests(ITestOutputHelper output) => _out = output;
 
-    private sealed record Profile(string Symbol, double TradeIntervalSeconds, TimeSpan FirstLiveTradeAfter, double HoleRate, int LagBuckets, int MergeAfterSeconds, decimal Price);
+    /// <param name="LagBuckets">Newest buckets missing from history, per timeframe (M1, M5, M15, H1). The exchange
+    /// publishes each granularity independently, so 1m can lag while 5m is complete (the VVV-USD production failure).</param>
+    private sealed record Profile(string Symbol, double TradeIntervalSeconds, TimeSpan FirstLiveTradeAfter, double HoleRate, int[] LagBuckets, int MergeAfterSeconds, decimal Price);
 
     private static readonly Profile[] Profiles =
     [
-        new("AAA-USD", 5, TimeSpan.Zero, 0.0, 0, 35, 50_000m),
-        new("BBB-USD", 40, TimeSpan.Zero, 0.05, 1, 48, 3_000m),
-        new("CCC-USD", 420, TimeSpan.FromMinutes(2), 0.4, 2, 61, 0.42m),
-        new("DDD-USD", 900, TimeSpan.FromMinutes(12), 0.6, 1, 70, 0.0000123m),
-        new("EEE-USD", 15, TimeSpan.FromSeconds(50), 0.0, 3, 90, 180m),
-        new("FFF-USD", 65, TimeSpan.Zero, 0.2, 0, 110, 12m),
+        new("AAA-USD", 5, TimeSpan.Zero, 0.0, [0, 0, 0, 0], 35, 50_000m),
+        new("BBB-USD", 40, TimeSpan.Zero, 0.05, [1, 1, 1, 1], 48, 3_000m),
+        new("CCC-USD", 420, TimeSpan.FromMinutes(2), 0.4, [2, 2, 2, 2], 61, 0.42m),
+        new("DDD-USD", 900, TimeSpan.FromMinutes(12), 0.6, [1, 1, 1, 1], 70, 0.0000123m),
+        new("EEE-USD", 15, TimeSpan.FromSeconds(50), 0.0, [3, 3, 3, 3], 90, 180m),
+        new("FFF-USD", 65, TimeSpan.Zero, 0.2, [0, 0, 0, 0], 110, 12m),
+        // 1m history stops well before the 5m/15m/1h history does, and no trade arrives before the clock fills the gap.
+        new("VVV-USD", 600, TimeSpan.FromMinutes(6), 0.3, [4, 0, 0, 0], 41, 0.09m),
+        new("WIF-USD", 300, TimeSpan.FromMinutes(3), 0.0, [7, 0, 1, 0], 52, 0.8m),
     ];
 
     private sealed class FrozenTime : TimeProvider
@@ -54,6 +59,7 @@ public class StartupSoakTests
 
     private static List<Candle> History(Profile p, Timeframe tf, DateTimeOffset requestedAt, Random rng)
     {
+        var lag = p.LagBuckets[Array.IndexOf(HistoryTimeframes, tf)];
         // Mirrors CoinbaseRestClient.GetCandlesAsync: 300 buckets, the still-forming bucket excluded, then the
         // exchange's own quirks: empty buckets omitted, and the newest buckets not yet published.
         var end = tf.BucketStart(requestedAt);
@@ -68,7 +74,7 @@ public class StartupSoakTests
             var l = Math.Min(o, c) * (1m - (decimal)rng.NextDouble() * 0.003m);
             price = c;
             if (rng.NextDouble() < p.HoleRate) continue;
-            if (i <= p.LagBuckets) continue;
+            if (i <= lag) continue;
             var v = (decimal)(rng.NextDouble() * 100) + 1m;
             list.Add(new Candle(new Symbol(p.Symbol), tf, open, o, h, l, c, v, v * (h + l + c) / 3m, 0m, 0m, 0, CandleSource.Historical));
         }

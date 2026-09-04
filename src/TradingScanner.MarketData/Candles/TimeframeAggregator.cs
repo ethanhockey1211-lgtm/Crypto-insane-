@@ -14,6 +14,7 @@ public sealed class TimeframeAggregator
     private readonly Timeframe _target;
 
     private DateTimeOffset? _bucket;
+    private DateTimeOffset _floor = DateTimeOffset.MinValue;
     private decimal _open, _high, _low, _close, _volume, _quoteVolume, _buyVolume, _sellVolume;
     private int _count;
     private int _live, _historical, _synthetic;
@@ -29,11 +30,21 @@ public sealed class TimeframeAggregator
         _target = target;
     }
 
-    public void Reset() => _bucket = null;
+    /// <summary>
+    /// Discard the forming bucket. <paramref name="floor"/> is the first target bucket this aggregator is responsible
+    /// for: base bars before it are ignored because the target series already holds those buckets (from history).
+    /// Without the floor, synthetic fill that starts inside an already-covered bucket would rebuild and re-close it.
+    /// </summary>
+    public void Reset(DateTimeOffset? floor = null)
+    {
+        _bucket = null;
+        _floor = floor ?? DateTimeOffset.MinValue;
+    }
 
     public void OnBaseCandleClosed(in Candle c, List<Candle> closed)
     {
         if (c.Timeframe != _base) throw new ArgumentException($"Expected {_base} candle, got {c.Timeframe}.");
+        if (c.OpenTime < _floor) return;
         var bucket = _target.BucketStart(c.OpenTime);
 
         if (_bucket is { } current && bucket != current)
