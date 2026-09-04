@@ -71,6 +71,21 @@ trades stream. Expect roughly a minute for warm-up of 200 symbols at the default
 | `ReceiveTimeout` | 15s | Silence that forces a reconnect (heartbeats arrive every second) |
 | `WarmUpHistory` | true | Load REST history at startup |
 
+### Persistence (optional)
+
+Set `ConnectionStrings:Postgres` (or the `ConnectionStrings__Postgres` environment variable) and the API migrates the
+schema on startup and stores alert rules and events, the paper account with its orders and positions, every signal
+with its outcome, and every closed candle of every timeframe (a TimescaleDB hypertable when the extension is present).
+`docker compose up -d` provides TimescaleDB and Redis; the connection string for it is
+`Host=localhost;Username=scanner;Password=scanner;Database=tradingscanner`. Without a connection string everything
+runs in memory and resets on restart, which the UI states. Redis is provisioned but not yet used by the code.
+
+Integration tests for the repositories run only when `TS_TEST_POSTGRES` points at a disposable database:
+
+```bash
+TS_TEST_POSTGRES="Host=localhost;Username=scanner;Password=scanner;Database=tradingscanner_test" dotnet test
+```
+
 ### AI explanation (optional)
 
 Set `ANTHROPIC_API_KEY` in the API server's environment (never in the browser). The model defaults to `claude-opus-5`
@@ -105,9 +120,25 @@ not used by the product.
 - Empty minutes are filled with explicitly flagged synthetic bars so series stay time-regular; synthetic bars carry zero volume.
 - Feed loss is a first-class state (`Reconnecting`) exposed on `/api/system/feed`, `/health/ready`, and the SignalR `feed` message. The UI (Phase 5) shows `LIVE DATA INTERRUPTED` from this signal.
 
+## Known gaps
+
+- **No authentication or per-user state yet.** Every endpoint is open; run the API on a private network. Alerts, the
+  paper account and the watchlist are single-tenant (the watchlist lives in the browser). The `users` / `watchlists`
+  tables from the architecture document are not created.
+- **Live exchange connectivity was not exercised in the environment this was built in** (outbound access to
+  exchanges was blocked). The Coinbase adapter is tested against the documented protocol and an in-process
+  WebSocket server; run it against the real feed and watch `/api/system/feed` and `/api/system/metrics`.
+- **The universe is selected once at startup**; symbols that become liquid later are picked up on restart.
+- **BTC dominance** needs an aggregator source and is shown as n/a.
+- **Scoring weights are untuned defaults.** The performance and backtest views exist to measure them; treat every
+  score as a ranking of evidence, not a probability.
+- **Relative volume uses a rolling baseline** rather than a time-of-day profile.
+- Persistence stores complex records as `jsonb` documents with indexed lookup columns instead of the fully
+  normalized tables sketched in the architecture document.
+
 ## Tests
 
-`dotnet test` runs unit tests for bucketing, candle construction, aggregation, series storage, universe selection,
+`dotnet test` runs 193 tests (5 need Postgres, see above) covering bucketing, candle construction, aggregation, series storage, universe selection,
 the Coinbase protocol parser (against documented message shapes), the REST client (stubbed HTTP), the provider's
 reconnect/resubscribe/gap logic (scripted sockets), a real in-process WebSocket server drop-and-reconnect scenario,
 the engine loop, and the API host with a fake provider (REST, health, SignalR).

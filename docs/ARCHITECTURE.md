@@ -264,3 +264,19 @@ Health checks: `/health/live` (process up), `/health/ready` (provider Connected,
 
 Phase 1 Market data → 2 Analytics → 3 Structure → 4 Scanner → 5 Dashboard → 6 Alerts → 7 Paper trading →
 8 Signal analytics → 9 Backtesting → 10 AI explanation. Each phase ends with a green build and green tests.
+
+## 12. Status after the first build (2026-09-04)
+
+All ten phases are implemented and tested (193 tests). Deviations from the plan above, recorded honestly:
+
+| Topic | Plan | What was built |
+|---|---|---|
+| Persistence | Normalized tables per entity, Redis for hot state | PostgreSQL behind the same repository interfaces, with `jsonb` documents plus indexed lookup columns; candles in a hypertable-compatible table; Redis provisioned but unused; the app runs fully in memory without a connection string |
+| Authentication | ASP.NET Core auth arriving with user state | Not implemented; endpoints are open, single-tenant |
+| Universe refresh | Hourly re-evaluation | Once at startup |
+| Evaluation cadence | Per closed bar | Scanner ranks every second from immutable snapshots; setups are re-classified per cycle, breakout state advances per 5m close |
+| Per-symbol evaluation | Shared between live and backtest | `OpportunityEvaluator.Evaluate` is the single function both call; the backtester replays 1m history through `SymbolAnalytics`, `SymbolBreakoutTracker`, and `SignalTracker.AdvanceBar` |
+| AI layer | Narrates structured engine output | `ExplanationService` sends only engine numbers to Claude via the official SDK, parses JSON, caches, and is disabled without a key |
+
+Sandbox limitation carried through the whole build: exchange endpoints were unreachable, so live connectivity is the
+first thing to validate when running outside it.

@@ -6,6 +6,7 @@
     <ProjectReference Include="..\TradingScanner.Analytics\TradingScanner.Analytics.csproj" />
     <ProjectReference Include="..\TradingScanner.Signals\TradingScanner.Signals.csproj" />
     <ProjectReference Include="..\TradingScanner.Backtest\TradingScanner.Backtest.csproj" />
+    <ProjectReference Include="..\TradingScanner.Infrastructure\TradingScanner.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradingScanner.Signals", "s
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradingScanner.Backtest", "src\TradingScanner.Backtest\TradingScanner.Backtest.csproj", "{2B62E4A2-B573-44B4-B774-9C908A2A5D11}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradingScanner.Infrastructure", "src\TradingScanner.Infrastructure\TradingScanner.Infrastructure.csproj", "{7CE9B7EA-8A0E-43CB-9D9F-49250280AAAE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -58,6 +60,10 @@ Global
 		{2B62E4A2-B573-44B4-B774-9C908A2A5D11}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2B62E4A2-B573-44B4-B774-9C908A2A5D11}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2B62E4A2-B573-44B4-B774-9C908A2A5D11}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7CE9B7EA-8A0E-43CB-9D9F-49250280AAAE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7CE9B7EA-8A0E-43CB-9D9F-49250280AAAE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7CE9B7EA-8A0E-43CB-9D9F-49250280AAAE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7CE9B7EA-8A0E-43CB-9D9F-49250280AAAE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{8D237CF0-FCAB-4C60-9077-429B86189B19} = {BD9F46C2-B824-486E-A67F-804CFE77A2FC}
@@ -67,5 +73,6 @@ Global
 		{81B37F59-CA7C-43E0-A53E-6DD662D0EEB8} = {BD9F46C2-B824-486E-A67F-804CFE77A2FC}
 		{CB9F37FE-6010-4462-A523-3A4F14258653} = {BD9F46C2-B824-486E-A67F-804CFE77A2FC}
 		{2B62E4A2-B573-44B4-B774-9C908A2A5D11} = {BD9F46C2-B824-486E-A67F-804CFE77A2FC}
+		{7CE9B7EA-8A0E-43CB-9D9F-49250280AAAE} = {BD9F46C2-B824-486E-A67F-804CFE77A2FC}
 	EndGlobalSection
 EndGlobal

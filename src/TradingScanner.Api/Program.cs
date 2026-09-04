@@ -8,6 +8,7 @@ using TradingScanner.Api.Services;
 using System.Text.Json.Serialization;
 using TradingScanner.Analytics;
 using TradingScanner.Core.Providers;
+using TradingScanner.Infrastructure;
 using TradingScanner.MarketData;
 using TradingScanner.Signals;
 
@@ -21,6 +22,7 @@ if (!builder.Environment.IsDevelopment())
 
 builder.Services.AddMarketData(builder.Configuration);
 builder.Services.AddAnalytics(builder.Configuration);
+builder.Services.AddPostgresPersistence(builder.Configuration); // before AddSignals: replaces the in-memory stores when configured
 builder.Services.AddSignals(builder.Configuration);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
