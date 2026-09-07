@@ -4,6 +4,10 @@
 services:
   - type: web
     name: tradingscanner
+    repo: https://github.com/ethanhockey1211-lgtm/Crypto-insane-.git
+    branch: claude/crypto-trading-scanner-ymspes
+    # Render waits for the GitHub Actions checks before rebuilding this live service.
+    autoDeployTrigger: checksPass
     runtime: docker
     plan: starter
     dockerfilePath: ./Dockerfile
