@@ -39,7 +39,7 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
   return (
     <section className="panel min-h-0 h-full overflow-auto">
       <DecisionBoard onOpen={onOpen} />
-      <details className="p-1">
+      <details open className="p-1">
       <summary className="cursor-pointer px-3 py-3 text-[14px] text-ink-2">Full market · filters and detailed indicators</summary>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 sm:py-0 sm:h-9 border-b border-line">
         <span className="eyebrow">Opportunities</span>
