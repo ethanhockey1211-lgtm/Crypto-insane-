@@ -2,7 +2,7 @@ name: Validate scanner
 on:
   pull_request:
   push:
-    branches: ["claude/crypto-trading-scanner-ymspes"]
+    branches: ["main", "claude/crypto-trading-scanner-ymspes"]
 permissions:
   contents: read
 jobs:
