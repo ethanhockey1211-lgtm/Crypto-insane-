@@ -29,8 +29,8 @@ reference prices. These are still bar-based signal simulations, not order-book e
 backtest; stop gaps, dependent positions and available depth are not fully modeled.
 
 `.github/workflows/validate.yml` runs the .NET test suite, frontend tests, typecheck and production build on
-pull requests and default-branch pushes. No credentials or live orders are used. Database integration tests
-still require a separately configured disposable Postgres database. Passing software tests does not prove
+pull requests and default-branch pushes. No production credentials or live orders are used. Database tests
+use an isolated, disposable Postgres service with test-only credentials. Passing software tests does not prove
 that a strategy will be profitable.
 
 The setup panel and scanner rows now distinguish evidence ranking from execution feasibility. `execution`
