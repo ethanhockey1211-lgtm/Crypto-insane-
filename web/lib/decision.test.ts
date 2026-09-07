@@ -20,6 +20,7 @@ describe("decision shortlist", () => {
   it("never turns breakout confirmation into an automatic buy instruction", () => {
     expect(decision(row(), true).label).toBe("Check confirmation");
     expect(decision(row({ entryState: "Watch" }), true).state).toBe("wait");
+    expect(decision(row({ entryState: "Late" }), true).label).toBe("Wait for a pullback");
     expect(decision(row({ executionStatus: "Blocked" }), true).state).toBe("avoid");
     expect(decision(row({ entryState: "Chase" }), true).state).toBe("avoid");
   });
