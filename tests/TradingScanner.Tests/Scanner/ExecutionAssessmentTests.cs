@@ -70,7 +70,7 @@ public class ExecutionAssessmentTests
         var o = Opportunity();
         o = o with { Plan = o.Plan! with { EntryState = EntryState.Late } };
 
-        var result = ExecutionAssessor.Assess(o, Market(), new());
+        var result = ExecutionAssessor.Assess(o, Market(), new() { FeeBps = 10, SlippageBps = 5 });
 
         Assert.Equal("Watch", result.Status);
         Assert.Contains(result.Reasons, reason => reason.Contains("wait for a pullback", StringComparison.OrdinalIgnoreCase));
@@ -81,7 +81,9 @@ public class ExecutionAssessmentTests
     [InlineData(59.99, "Blocked")]
     public void Default_execution_score_gate_matches_the_active_setup_threshold(double score, string expectedStatus)
     {
-        var result = ExecutionAssessor.Assess(Opportunity() with { Score = score }, Market(), new());
+        // Keep the cost model deliberately permissive here so this test isolates the default
+        // score gate instead of failing on the fixture's compact first target.
+        var result = ExecutionAssessor.Assess(Opportunity() with { Score = score }, Market(), new() { FeeBps = 10, SlippageBps = 5 });
 
         Assert.Equal(expectedStatus, result.Status);
     }
