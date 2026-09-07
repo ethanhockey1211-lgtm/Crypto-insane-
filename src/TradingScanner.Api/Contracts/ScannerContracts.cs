@@ -37,6 +37,7 @@ public sealed record ScannerRowDto(
     string? ExecutionStatus = null,
     double? NetRewardRatio = null,
     string? ExecutionReason = null,
+    IReadOnlyList<string>? ExecutionReasons = null,
     double? AssessedPrice = null)
 {
     private static readonly string[] ComponentOrder = [OpportunityScorer.Momentum, OpportunityScorer.Volume, OpportunityScorer.Structure, OpportunityScorer.Breakout, OpportunityScorer.Market, OpportunityScorer.Liquidity, OpportunityScorer.RiskReward];
@@ -52,7 +53,7 @@ public sealed record ScannerRowDto(
             o.Setup.Breakout?.State.ToString(), o.Overextension.DoNotChase, o.Quality.Stale, o.Metrics.VwapDeviationPct, o.Metrics.Volume24hQuote,
             o.Setup.KeyLevel, o.Metrics.Alignment5m, components, o.Breakdown.Penalties.Sum(p => p.Points),
             o.Plan?.EntryState.ToString(), o.Plan?.ChaseCeiling, o.Execution?.Status, o.Execution?.NetRewardRatio,
-            o.Execution?.Reasons.FirstOrDefault(), o.Price);
+            o.Execution?.Reasons.FirstOrDefault(), o.Execution?.Reasons, o.Price);
     }
 }
 
