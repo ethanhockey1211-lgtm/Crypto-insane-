@@ -9,6 +9,30 @@ Nothing here predicts prices. No setup is ever presented as certain. Real-money 
 
 ## Execution-quality checks
 
+### Decision workspace and validation
+
+The default scanner view is now a maximum-three candidate shortlist. In-zone candidates appear first,
+then candidates waiting for their zone, with evidence scores used for ordering within each group.
+Only backend `Watch` assessments with valid positive net R enter the shortlist. There is no automated
+buy state: users must verify the trigger. Blocked entries remain inspectable in the collapsible full-market
+table. Missing assessments, stale quotes, disconnected feeds and scanner snapshots older than ten seconds
+fail closed. The setup drawer suppresses execution guidance when its data is interrupted.
+
+The store refreshes execution-only changes, filtering and sorting when ranks do not change, stale flags
+when price is unchanged, and removes symbols absent from the latest snapshot. Signal evidence is explicitly
+distinguished from realized paper-trade performance and from validation of the execution policy.
+
+Replay fixes: actual fill price/time now determine entry, initial risk, T1 reward ratio and outcome horizons;
+bars before a delayed fill cannot affect outcomes. Fills already beyond the stop or T1 are rejected and
+latency is at least one bar. Both entry and exit include fees, slippage and half-spread at their respective
+reference prices. These are still bar-based signal simulations, not order-book executions or a portfolio
+backtest; stop gaps, dependent positions and available depth are not fully modeled.
+
+`.github/workflows/validate.yml` runs the .NET test suite, frontend tests, typecheck and production build on
+pull requests and default-branch pushes. No credentials or live orders are used. Database integration tests
+still require a separately configured disposable Postgres database. Passing software tests does not prove
+that a strategy will be profitable.
+
 The setup panel and scanner rows now distinguish evidence ranking from execution feasibility. `execution`
 on the opportunity response reports `Blocked` or `Watch`, reasons, net reward/risk to T1 at the assessed
 current price, and the **required** break-even win rate. This is not a forecast, calibrated win probability,

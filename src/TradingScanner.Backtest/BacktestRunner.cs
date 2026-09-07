@@ -124,12 +124,15 @@ public sealed class BacktestRunner
                 if (opp.Setup.Type == SetupType.None || opp.Score < request.RecordThreshold) continue;
                 var key = opp.Setup.Type.ToString();
                 if (r.LastRecorded.TryGetValue(key, out var last) && t - last < dedupe) continue;
-                r.LastRecorded[key] = t;
                 // Achievable entry: the open of the bar `LatencyBars` after the evaluation bar.
-                var entryIdx = r.M1Cursor - 1 + Math.Max(0, request.Costs.LatencyBars);
+                var entryIdx = r.M1Cursor - 1 + Math.Max(1, request.Costs.LatencyBars);
                 if (entryIdx >= r.M1.Count) continue;
-                var record = SignalTracker.ToRecord(opp, market) with { At = t, Price = (double)r.M1[entryIdx].Open };
-                var outcome = new SignalOutcome(record.Id, null, null, null, null, null, 0, 0, record.Stop is null ? null : false, record.Target1 is null ? null : false, record.Target2 is null ? null : false, record.Target3 is null ? null : false, "none", null, t, false);
+                var entryBar = r.M1[entryIdx];
+                if (entryBar.OpenTime > request.To) continue;
+                var record = FillAtOpen(SignalTracker.ToRecord(opp, market), (double)entryBar.Open, entryBar.OpenTime);
+                if (record is null) continue;
+                r.LastRecorded[key] = t;
+                var outcome = new SignalOutcome(record.Id, null, null, null, null, null, 0, 0, record.Stop is null ? null : false, record.Target1 is null ? null : false, record.Target2 is null ? null : false, record.Target3 is null ? null : false, "none", null, entryBar.OpenTime, false);
                 r.Active.Add(new SignalWithOutcome(record, outcome));
             }
         }
@@ -147,7 +150,7 @@ public sealed class BacktestRunner
         for (var k = r.Active.Count - 1; k >= 0; k--)
         {
             var item = r.Active[k];
-            // Bars up to and including the latency bar are part of the entry, not the outcome.
+            // Never count a bar before the actual fill. The fill bar itself is eligible after its open.
             if (m1.OpenTime < item.Signal.At) continue;
             var updated = SignalTracker.AdvanceBar(item, (double)m1.High, (double)m1.Low, (double)m1.Close, m1.CloseTime, horizon);
             var next = item with { Outcome = updated };
@@ -156,13 +159,24 @@ public sealed class BacktestRunner
         }
     }
 
+    /// <summary>Rebase every risk calculation to the achievable fill, not the old planned midpoint.</summary>
+    public static SignalRecord? FillAtOpen(SignalRecord signal, double fill, DateTimeOffset at)
+    {
+        if (!double.IsFinite(fill) || fill <= 0 || at < signal.At) return null;
+        if (signal.Stop is { } stop && (!double.IsFinite(stop) || stop <= 0 || fill <= stop)) return null;
+        if (signal.Target1 is { } target && (!double.IsFinite(target) || fill >= target)) return null;
+        var rr = signal.Stop is { } s && signal.Target1 is { } t ? (double?)((t - fill) / (fill - s)) : null;
+        return signal with { At = at, Price = fill, Entry = fill, RewardRatio1 = rr };
+    }
+
     /// <summary>Net R = gross R minus round-trip costs expressed in units of initial risk.</summary>
     public static SignalWithOutcome ApplyCosts(SignalWithOutcome item, CostModel costs)
     {
         var s = item.Signal; var o = item.Outcome;
         if (o.R is not { } r || s.Entry is not { } entry || s.Stop is not { } stop || entry <= stop) return item;
         var riskPerUnit = entry - stop;
-        var netR = r - costs.CostPerUnit(s.Price) / riskPerUnit;
+        var exit = Math.Max(0, entry + r * riskPerUnit);
+        var netR = r - costs.CostPerUnit(entry, exit) / riskPerUnit;
         return item with { Outcome = o with { R = netR } };
     }
 }

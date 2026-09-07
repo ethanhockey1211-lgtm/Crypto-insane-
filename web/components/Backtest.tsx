@@ -46,6 +46,7 @@ export function Backtest({ onOpen }: { onOpen: (s: string) => void }) {
       </div>
       {error && <div className="px-3 py-1.5 warn text-[11.5px] border-b border-line">{error}</div>}
       <div className="overflow-auto min-h-0 flex-1">
+        <p className="px-4 py-3 text-[14px] text-ink-2 border-b border-line">Historical signal replay, not a validated trading strategy. R values use the simulated fill and costs on both sides. Target-hit rates and price returns remain gross. This replay does not filter by the live execution checks, model order-book depth, or prove out-of-sample profitability.</p>
         {result && (
           <>
             <div className="px-3 py-2 border-b border-line text-[11.5px] text-ink-2">

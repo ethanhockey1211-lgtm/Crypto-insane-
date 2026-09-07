@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useRow } from "@/lib/store";
+import { useRow, useCycle, useFeed, useHub } from "@/lib/store";
+import { scannerIsFresh } from "@/lib/decision";
 import { fmtAge, fmtPct, fmtPrice, fmtVolume, fmtX, setupLabel } from "@/lib/format";
 import type { Explanation, Opportunity } from "@/lib/types";
 import { PriceChart } from "./PriceChart";
@@ -25,6 +26,12 @@ function Stat({ k, v, cls }: { k: string; v: React.ReactNode; cls?: string }) {
 
 export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol: string; onClose: () => void; watched: boolean; onWatch: (s: string) => void }) {
   const row = useRow(symbol);
+  const cycle = useCycle();
+  const feed = useFeed();
+  const hub = useHub();
+  const [now, setNow] = useState(() => Date.now());
+  const [loadedAt, setLoadedAt] = useState(0);
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
   const [opp, setOpp] = useState<Opportunity | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ai, setAi] = useState<{ loading: boolean; result: Explanation | null; error: string | null }>({ loading: false, result: null, error: null });
@@ -39,7 +46,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
     let alive = true;
     setOpp(null); setError(null);
     const load = async () => {
-      try { const o = await api.opportunity(symbol); if (alive) { setOpp(o); setError(null); } }
+      try { const o = await api.opportunity(symbol); if (alive) { setOpp(o); setLoadedAt(Date.now()); setError(null); } }
       catch (e) { if (alive) setError((e as Error).message); }
     };
     void load();
@@ -56,6 +63,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
   const price = row?.price ?? opp?.price ?? 0;
   const plan = opp?.plan ?? null;
   const m = opp?.metrics;
+  const current = !error && now - loadedAt <= 10000 && hub === "connected" && feed?.live === true && scannerIsFresh(cycle.at, now) && !opp?.quality.stale;
   const scoreClass = (opp?.score ?? 0) >= 80 ? "text-ink" : (opp?.score ?? 0) >= 60 ? "text-ink-2" : "text-ink-3";
 
   return (
@@ -78,7 +86,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
         {opp && (
           <>
             <Section title="Execution quality · not a price prediction">
-              {opp.execution ? <>
+              {!current ? <p role="status" className="text-[14px] warn">DATA INTERRUPTED — the plan below is for reference only. Wait for fresh updates before considering an entry.</p> : opp.execution ? <>
                 <p className={`text-[13px] ${opp.execution.status === "Blocked" ? "warn" : "text-ink-2"}`}>
                   {opp.execution.status === "Blocked" ? "NO TRADE — execution checks failed" : "WATCH — confirm the trigger"}
                 </p>

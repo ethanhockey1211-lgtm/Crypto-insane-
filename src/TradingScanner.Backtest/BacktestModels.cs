@@ -6,8 +6,9 @@ namespace TradingScanner.Backtest;
 /// <summary>Execution assumptions applied to replayed signals. All in basis points of price unless stated.</summary>
 public sealed record CostModel(int FeeBps = 10, int SlippageBps = 5, int SpreadBps = 4, int LatencyBars = 1)
 {
-    /// <summary>Round-trip fee, entry slippage and half the spread, per unit of price.</summary>
-    public double CostPerUnit(double price) => price * (2 * FeeBps + SlippageBps + SpreadBps / 2.0) / 10_000.0;
+    /// <summary>Fees, slippage and half-spread on BOTH sides at each side's reference price.</summary>
+    public double CostPerUnit(double entry, double exit) => (entry + exit) * (FeeBps + SlippageBps + SpreadBps / 2.0) / 10_000.0;
+    public double CostPerUnit(double price) => CostPerUnit(price, price);
 }
 
 public sealed record BacktestRequest(

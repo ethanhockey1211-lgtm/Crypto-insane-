@@ -103,7 +103,23 @@ public class BacktestRunnerTests
         Assert.Equal(-0.025, bar.Mae, 9);
 
         var net = BacktestRunner.ApplyCosts(item with { Outcome = bar }, new CostModel(10, 5, 4, 1));
-        // cost per unit = 100 × (20 + 5 + 2) / 10000 = 0.27; risk per unit = 2 → 0.135R
-        Assert.Equal(-1.135, net.Outcome.R!.Value, 9);
+        // Both sides: (entry 100 + stop exit 98) × (10 + 5 + 2) / 10000 / 2 risk.
+        Assert.Equal(-1.1683, net.Outcome.R!.Value, 9);
+    }
+
+    [Fact]
+    public void Fill_rebases_risk_and_horizons_and_rejects_invalid_gap_entries()
+    {
+        var signal = new SignalRecord(Guid.NewGuid(), "X-USD", T.Base, "Breakout", "High", 80, new Dictionary<string, double>(), 0, 100, 100, 98, 104, 106, 110, 2, "RiskOn", "Bullish", false, 1);
+        var filled = BacktestRunner.FillAtOpen(signal, 102, T.Base.AddMinutes(3))!;
+        Assert.Equal(102, filled.Entry);
+        Assert.Equal(102, filled.Price);
+        Assert.Equal(0.5, filled.RewardRatio1);
+        Assert.Equal(T.Base.AddMinutes(3), filled.At);
+        Assert.Null(BacktestRunner.FillAtOpen(signal, 97, T.Base.AddMinutes(1)));
+        Assert.Null(BacktestRunner.FillAtOpen(signal, 105, T.Base.AddMinutes(1)));
+        var outcome = new SignalOutcome(signal.Id, null, null, null, null, null, 0, 0, false, false, false, false, "none", null, filled.At, false);
+        var item = new SignalWithOutcome(filled, outcome);
+        Assert.Equal(outcome, SignalTracker.AdvanceBar(item, 110, 90, 100, T.Base.AddMinutes(2), TimeSpan.FromHours(1)));
     }
 }

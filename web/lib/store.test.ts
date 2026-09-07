@@ -15,7 +15,7 @@ const stream = (rows: ScannerRow[]): ScannerStream => ({
 });
 
 describe("MarketStore", () => {
-  it("notifies only the symbols whose rows changed, and the list only when order changes", () => {
+  it("notifies changed symbols and refreshes derived lists even when rank is unchanged", () => {
     const hits: string[] = [];
     const offA = store.subscribeSymbol("A-USD", () => hits.push("A"));
     const offB = store.subscribeSymbol("B-USD", () => hits.push("B"));
@@ -32,7 +32,7 @@ describe("MarketStore", () => {
 
     store.applyScanner(stream([row("A-USD", 85), row("B-USD", 70)])); // only A changed, same order
     store.flush();
-    expect(hits).toEqual(["A"]);
+    expect(hits).toEqual(["A", "list"]);
     hits.length = 0;
 
     hits.length = 0;
@@ -73,5 +73,22 @@ describe("MarketStore", () => {
     store.flush();
     expect(store.getTape()).toHaveLength(300);
     expect(store.getTape()[0].id).toBe(350);
+  });
+
+  it("refreshes execution-only changes and removes symbols no longer in the universe", () => {
+    const original = { ...row("CHECK-USD", 90), executionStatus: "Watch" as const };
+    store.applyScanner(stream([original]));
+    const before = store.getOrder();
+    store.applyScanner(stream([{ ...original, executionStatus: "Blocked", entryState: "Chase" }]));
+    expect(store.getRow("CHECK-USD")?.executionStatus).toBe("Blocked");
+    expect(store.getOrder()).not.toBe(before);
+    store.applyScanner(stream([]));
+    expect(store.getRow("CHECK-USD")).toBeNull();
+  });
+
+  it("updates stale flags even when quote price does not move", () => {
+    store.applyScanner(stream([row("STALE-USD", 80)]));
+    store.applyQuotes([{ symbol: "STALE-USD", price: 1, bid: 1, ask: 1, exchangeTimeMs: 0, receivedAtMs: 0, ageMs: 40000, stale: true, provider: "t", exchange: "t" }]);
+    expect(store.getRow("STALE-USD")?.stale).toBe(true);
   });
 });

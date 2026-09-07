@@ -65,6 +65,18 @@ export function Performance({ onOpen }: { onOpen: (s: string) => void }) {
       </div>
       {error && <div className="px-3 py-1.5 warn text-[11.5px] border-b border-line">{error}</div>}
       <div className="overflow-auto min-h-0 flex-1">
+        <div className="p-4 sm:p-5 border-b border-line">
+          <h2 className="text-[20px] font-semibold">Has the scanner demonstrated an edge?</h2>
+          <p className="text-[16px] text-warn mt-2">Not established by this report.</p>
+          <p className="text-[14px] text-ink-2 mt-2">These are recorded signal outcomes, not executed trades. They do not isolate the new execution checks or prove profitability after your fees, slippage and missed fills.</p>
+          {report && <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 text-[14px]">
+            <div><p className="text-ink-2">Recorded signals</p><p className="text-[22px] num">{report.overall.signals}</p></div>
+            <div><p className="text-ink-2">Completed outcomes</p><p className="text-[22px] num">{report.overall.completed}</p></div>
+            <div><p className="text-ink-2">Gross average R</p><p className="text-[22px] num">{num(report.overall.avgR)}</p></div>
+            <div><p className="text-ink-2">T1 before stop</p><p className="text-[22px] num">{pct(report.overall.targetBeforeStopRate)}</p></div>
+          </div>}
+          <p className="text-[14px] text-ink-2 mt-4">Validation requires a frozen strategy tested on unseen periods, followed by forward paper trades with actual costs. More signals alone do not establish an edge; overlapping signals can be correlated.</p>
+        </div>
         {report && (
           <>
             <BucketTable title="By score bucket" rows={report.byScoreBucket} />

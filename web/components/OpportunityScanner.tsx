@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { store, useOrder } from "@/lib/store";
 import { SETUP_ORDER } from "@/lib/format";
 import { OpportunityRow } from "./OpportunityRow";
+import { DecisionBoard } from "./DecisionBoard";
 
 type SortKey = "score" | "momentum" | "volume" | "rr" | "setup" | "volume24h" | "r24h";
 const SORTS: { key: SortKey; label: string }[] = [
@@ -36,7 +37,10 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
   }, [order, sort, onlySetups, query]);
 
   return (
-    <section className="panel flex flex-col min-h-0 h-full">
+    <section className="panel min-h-0 h-full overflow-auto">
+      <DecisionBoard onOpen={onOpen} />
+      <details className="p-1">
+      <summary className="cursor-pointer px-3 py-3 text-[14px] text-ink-2">Full market · filters and detailed indicators</summary>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 sm:py-0 sm:h-9 border-b border-line">
         <span className="eyebrow">Opportunities</span>
         <span className="num text-[11px] text-ink-3 whitespace-nowrap">{symbols.length} of {order.length}</span>
@@ -67,7 +71,7 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
               <th className="text-right px-2 font-normal hidden xl:table-cell">Entry</th>
               <th className="text-right px-2 font-normal hidden xl:table-cell">Stop</th>
               <th className="text-right px-2 font-normal hidden xl:table-cell">Target</th>
-              <th className="text-right px-2 font-normal hidden sm:table-cell">R:R</th>
+              <th className="text-right px-2 font-normal hidden sm:table-cell" title="Before execution costs, measured from planned midpoint">Gross R:R</th>
               <th className="text-right px-2 font-normal hidden lg:table-cell">5m</th>
               <th className="text-right px-2 font-normal">15m</th>
               <th className="text-right px-2 font-normal hidden lg:table-cell">1h</th>
@@ -83,6 +87,7 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
           </tbody>
         </table>
       </div>
+      </details>
     </section>
   );
 }

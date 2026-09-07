@@ -51,16 +51,22 @@ class MarketStore {
   // ---- mutations ----
   applyScanner(s: ScannerStream): void {
     const nextOrder: string[] = new Array(s.rows.length);
+    let changed = false;
     for (let i = 0; i < s.rows.length; i++) {
       const r = s.rows[i];
       nextOrder[i] = r.symbol;
       const prev = this.rows.get(r.symbol);
       if (!prev || rowChanged(prev, r)) {
+        changed = true;
         this.rows.set(r.symbol, r);
         this.dirtySymbols.add(r.symbol);
       }
     }
-    if (nextOrder.length !== this.order.length || nextOrder.some((s2, i) => s2 !== this.order[i])) {
+    const included = new Set(nextOrder);
+    for (const symbol of this.rows.keys()) {
+      if (!included.has(symbol)) { this.rows.delete(symbol); this.dirtySymbols.add(symbol); changed = true; }
+    }
+    if (changed || nextOrder.length !== this.order.length || nextOrder.some((s2, i) => s2 !== this.order[i])) {
       this.order = nextOrder;
       this.dirtyList = true;
     }
@@ -73,9 +79,11 @@ class MarketStore {
   applyQuotes(quotes: QuoteDto[]): void {
     for (const q of quotes) {
       const row = this.rows.get(q.symbol);
-      if (row && row.price !== q.price) {
+      if (row && (row.price !== q.price || row.stale !== q.stale)) {
         this.rows.set(q.symbol, { ...row, price: q.price, stale: q.stale });
         this.dirtySymbols.add(q.symbol);
+        this.order = [...this.order];
+        this.dirtyList = true;
       }
     }
     this.schedule();
@@ -149,7 +157,11 @@ function rowChanged(a: ScannerRow, b: ScannerRow): boolean {
   return a.score !== b.score || a.rank !== b.rank || a.price !== b.price || a.setup !== b.setup || a.breakout !== b.breakout ||
     a.r1m !== b.r1m || a.r5m !== b.r5m || a.r15m !== b.r15m || a.r1h !== b.r1h || a.r24h !== b.r24h || a.relVol !== b.relVol ||
     a.doNotChase !== b.doNotChase || a.stale !== b.stale || a.entry !== b.entry || a.stop !== b.stop || a.target1 !== b.target1 ||
-    a.rr !== b.rr || a.penalty !== b.penalty || a.confidence !== b.confidence || a.keyLevel !== b.keyLevel || a.vwapDev !== b.vwapDev;
+    a.rr !== b.rr || a.penalty !== b.penalty || a.confidence !== b.confidence || a.keyLevel !== b.keyLevel || a.vwapDev !== b.vwapDev ||
+    a.entryState !== b.entryState || a.chaseCeiling !== b.chaseCeiling || a.executionStatus !== b.executionStatus ||
+    a.netRewardRatio !== b.netRewardRatio || a.volume24h !== b.volume24h || a.trend !== b.trend ||
+    a.executionReason !== b.executionReason || a.assessedPrice !== b.assessedPrice ||
+    a.components.length !== b.components.length || a.components.some((v, i) => v !== b.components[i]);
 }
 
 export const store = new MarketStore();

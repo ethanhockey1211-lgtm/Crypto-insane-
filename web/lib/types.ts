@@ -1,6 +1,8 @@
 // Mirrors the API contracts (System.Text.Json camelCase, enums as names).
 
 export interface ScannerRow {
+  executionReason?: string | null;
+  assessedPrice?: number | null;
   executionStatus?: "Blocked" | "Watch" | null;
   netRewardRatio?: number | null;
   rank: number;
