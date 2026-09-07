@@ -2,6 +2,8 @@
 
 export interface ScannerRow {
   executionReason?: string | null;
+  /** All execution blockers (or the single advisory for a passing setup). */
+  executionReasons?: string[] | null;
   assessedPrice?: number | null;
   executionStatus?: "Blocked" | "Watch" | null;
   netRewardRatio?: number | null;
