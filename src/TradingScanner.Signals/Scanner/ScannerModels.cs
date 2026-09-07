@@ -137,7 +137,10 @@ public sealed record Opportunity(
     IReadOnlyList<string> Risks,
     OpportunityMetrics Metrics,
     ScoreChange? Change,
-    DataQuality Quality);
+    DataQuality Quality)
+{
+    public ExecutionAssessment? Execution { get; init; }
+}
 
 public sealed record ScannerSnapshot(DateTimeOffset At, MarketContext Market, IReadOnlyList<Opportunity> Opportunities, int Universe, double CycleMs)
 {

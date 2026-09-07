@@ -61,6 +61,7 @@ public sealed class OverextensionConfig
 
 public sealed class ScannerOptions
 {
+    public ExecutionConfig Execution { get; set; } = new();
     public int IntervalMs { get; set; } = 1000;
     public int TopN { get; set; } = 50;
     public TimeSpan StaleQuoteThreshold { get; set; } = TimeSpan.FromSeconds(30);

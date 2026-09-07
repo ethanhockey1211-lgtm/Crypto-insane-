@@ -7,6 +7,28 @@ terminal-style UI. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the desi
 
 Nothing here predicts prices. No setup is ever presented as certain. Real-money execution does not exist in this codebase.
 
+## Execution-quality checks
+
+The setup panel and scanner rows now distinguish evidence ranking from execution feasibility. `execution`
+on the opportunity response reports `Blocked` or `Watch`, reasons, net reward/risk to T1 at the assessed
+current price, and the **required** break-even win rate. This is not a forecast, calibrated win probability,
+or automatic trigger confirmation. All checks passing still means watch and verify the plan's trigger.
+
+`Scanner:Execution` configures per-side `FeeBps` (default 60), `SlippageBps` (5),
+`MinNetRewardRatio` (1.5), `MaxSpreadBps` (20), `MinVolume24hQuote` (2,000,000), and `MinScore` (70).
+Fees are conservative assumptions, not exchange fee quotes; configure your actual tier. Half the observed
+spread, fees and slippage are applied on each side at the respective entry/exit price. Stops can gap and
+order-book depth is not modeled, so modeled risk is not a maximum possible loss.
+
+Checks veto stale/future quotes, incomplete history, missing/invalid/wide spreads, inadequate liquidity,
+missing BTC context, BTC dumping or strong risk-off, overextension, weak evidence, invalid long geometry,
+late/chase entries and insufficient net reward. Nearby resistance above entry now caps T1 even when it
+destroys the apparent reward/risk; it is no longer skipped to manufacture a better target.
+
+These checks do not filter historical signal collection or change its population. Existing performance
+reports remain evidence-signal reports, **not** validated results for this new execution policy. A separate
+out-of-sample evaluation with actual fees and paper fills is required before claiming predictive value.
+
 ## Status
 
 | Phase | Scope | State |

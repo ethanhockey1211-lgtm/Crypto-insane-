@@ -27,7 +27,8 @@ public static class OpportunityEvaluator
         var change = previous is null ? null : Diff(previous, breakdown);
         var age = now - input.Quote.ExchangeTime;
         var quality = new DataQuality(age > _o.StaleQuoteThreshold, (long)age.TotalMilliseconds, input.HistoryLoaded, input.Quote.Provider, input.Quote.Exchange);
-        return new Opportunity(input.Symbol, p.AsOf, p.Price, 0, breakdown.Total, breakdown, setup, plan, over, why, invalidation, risks, metrics, change, quality);
+        var opportunity = new Opportunity(input.Symbol, p.AsOf, p.Price, 0, breakdown.Total, breakdown, setup, plan, over, why, invalidation, risks, metrics, change, quality);
+        return opportunity with { Execution = ExecutionAssessor.Assess(opportunity, market, _o.Execution) };
     }
 
     /// <summary>
