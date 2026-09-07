@@ -65,6 +65,28 @@ public class ExecutionAssessmentTests
     }
 
     [Fact]
+    public void Late_price_is_visible_as_a_wait_not_misclassified_as_a_chase()
+    {
+        var o = Opportunity();
+        o = o with { Plan = o.Plan! with { EntryState = EntryState.Late } };
+
+        var result = ExecutionAssessor.Assess(o, Market(), new());
+
+        Assert.Equal("Watch", result.Status);
+        Assert.Contains(result.Reasons, reason => reason.Contains("wait for a pullback", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(60, "Watch")]
+    [InlineData(59.99, "Blocked")]
+    public void Default_execution_score_gate_matches_the_active_setup_threshold(double score, string expectedStatus)
+    {
+        var result = ExecutionAssessor.Assess(Opportunity() with { Score = score }, Market(), new());
+
+        Assert.Equal(expectedStatus, result.Status);
+    }
+
+    [Fact]
     public void Missing_btc_or_dumping_market_is_blocked()
     {
         Assert.Equal("Blocked", ExecutionAssessor.Assess(Opportunity(), Market() with { Btc = null }, new()).Status);
