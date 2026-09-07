@@ -8,7 +8,12 @@ public sealed class ExecutionConfig
     public double MinNetRewardRatio { get; set; } = 1.5;
     public double MaxSpreadBps { get; set; } = 20;
     public double MinVolume24hQuote { get; set; } = 2_000_000;
-    public double MinScore { get; set; } = 70;
+    /// <summary>
+    /// Minimum evidence score for an execution-feasible setup. This deliberately matches
+    /// <see cref="ScannerOptions.SetupScoreThreshold"/> so a setup is not recorded as active
+    /// and then hidden from the decision workspace solely because of a second, stricter score gate.
+    /// </summary>
+    public double MinScore { get; set; } = 60;
 }
 
 public sealed record ExecutionAssessment(string Status, double? NetRewardRatio,
@@ -70,9 +75,15 @@ public static class ExecutionAssessor
             return new("Blocked", null, null, null, null, null, reasons);
         }
         if (rr < cfg.MinNetRewardRatio) reasons.Add("Reward to T1 after estimated round-trip costs is insufficient");
-        if (p.EntryState is EntryState.Chase or EntryState.Late) reasons.Add("Current price is beyond the planned entry zone or chase ceiling");
+        // Late means the price is above the preferred zone but still below the cost-aware chase
+        // ceiling. It is a wait-for-pullback condition, not an execution veto. Chase remains a
+        // hard block because the plan no longer has the configured reward remaining to T1.
+        if (p.EntryState is EntryState.Chase) reasons.Add("Current price is above the no-chase ceiling");
         var status = reasons.Count > 0 ? "Blocked" : "Watch";
-        if (reasons.Count == 0) reasons.Add("Cost and data checks pass; verify the stated confirmation trigger before a paper entry");
+        if (reasons.Count == 0)
+            reasons.Add(p.EntryState == EntryState.Late
+                ? "Price is above the planned entry zone; wait for a pullback or a fresh setup before a paper entry"
+                : "Cost and data checks pass; verify the stated confirmation trigger before a paper entry");
         var ceiling = (1 - rate) * (p.Target1 + cfg.MinNetRewardRatio * p.Stop)
             / ((1 + rate) * (1 + cfg.MinNetRewardRatio));
         return new(status, rr, reward > 0 ? risk / (risk + reward) : null, entryCost, reward, risk, reasons)
