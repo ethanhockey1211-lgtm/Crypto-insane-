@@ -42,6 +42,7 @@ export const OpportunityRow = memo(function OpportunityRow({ symbol, active, onO
       <td className="pl-3 sm:pl-2 pr-2 font-medium whitespace-nowrap">
         <span className="num text-ink-3 sm:hidden mr-1.5 text-[10.5px]">{row.rank}</span>
         {symbol.replace("-USD", "")}
+        {row.executionStatus === "Blocked" && <span className="tag ml-1 tag-warn" title="Execution checks failed. Open setup for reasons.">no trade</span>}
         {row.stale && <span className="tag ml-1 text-warn border-warn/40">stale</span>}
         {/* Phones hide the setup column; the setup rides under the symbol instead. */}
         <div className="sm:hidden text-[10.5px] font-normal leading-tight mt-0.5">

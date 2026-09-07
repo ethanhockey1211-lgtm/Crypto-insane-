@@ -77,6 +77,20 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
         {error && <div className="px-4 py-3 warn text-[12px]">Setup detail unavailable: {error}</div>}
         {opp && (
           <>
+            <Section title="Execution quality · not a price prediction">
+              {opp.execution ? <>
+                <p className={`text-[13px] ${opp.execution.status === "Blocked" ? "warn" : "text-ink-2"}`}>
+                  {opp.execution.status === "Blocked" ? "NO TRADE — execution checks failed" : "WATCH — confirm the trigger"}
+                </p>
+                <div className="grid grid-cols-2 gap-3 my-2">
+                  <Stat k="Net R:R to T1 at assessed price" v={opp.execution.netRewardRatio == null ? "—" : `${opp.execution.netRewardRatio.toFixed(2)}R`} />
+                  <Stat k="Required break-even win rate" v={fmtPct(opp.execution.breakEvenWinRate)} />
+                  <Stat k="Maximum entry after costs" v={fmtPrice(opp.execution.maxEntryPriceAfterCosts)} cls="warn" />
+                </div>
+                <ul className="text-[12px] space-y-1">{opp.execution.reasons.map((reason, i) => <li key={i}>{reason}</li>)}</ul>
+                <p className="text-[11px] text-ink-3 mt-2">Assessed at {fmtPrice(opp.price)}. Includes configured fees, slippage and spread on entry and exit. Break-even is a required success rate, not a predicted probability. Actual fills and stop losses can be worse.</p>
+              </> : <p className="text-[12px] warn">Execution assessment unavailable. Score is not a buy signal.</p>}
+            </Section>
             <Section title="Plan">
               {plan ? (
                 <>

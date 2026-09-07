@@ -1,6 +1,8 @@
 // Mirrors the API contracts (System.Text.Json camelCase, enums as names).
 
 export interface ScannerRow {
+  executionStatus?: "Blocked" | "Watch" | null;
+  netRewardRatio?: number | null;
   rank: number;
   symbol: string;
   score: number;
@@ -146,6 +148,7 @@ export interface OpportunityMetrics {
   trend5m: string | null; trend15m: string | null; alignment5m: string | null; alignment15m: string | null;
 }
 export interface Opportunity {
+  execution?: { status: "Blocked" | "Watch"; netRewardRatio: number | null; breakEvenWinRate: number | null; entryCostPerUnit: number | null; netRewardPerUnit: number | null; netRiskPerUnit: number | null; maxEntryPriceAfterCosts: number | null; reasons: string[] };
   symbol: { value: string };
   at: string; price: number; rank: number; score: number;
   breakdown: ScoreBreakdown; setup: SetupClassification; plan: TradePlan | null; overextension: Overextension;

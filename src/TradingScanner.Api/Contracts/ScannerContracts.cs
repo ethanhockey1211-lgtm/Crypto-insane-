@@ -33,7 +33,9 @@ public sealed record ScannerRowDto(
     double Penalty,
     /// <summary>Watch, InZone, Late or Chase (see <see cref="EntryState"/>); null without a plan.</summary>
     string? EntryState,
-    double? ChaseCeiling)
+    double? ChaseCeiling,
+    string? ExecutionStatus = null,
+    double? NetRewardRatio = null)
 {
     private static readonly string[] ComponentOrder = [OpportunityScorer.Momentum, OpportunityScorer.Volume, OpportunityScorer.Structure, OpportunityScorer.Breakout, OpportunityScorer.Market, OpportunityScorer.Liquidity, OpportunityScorer.RiskReward];
 
@@ -47,7 +49,7 @@ public sealed record ScannerRowDto(
             o.Metrics.R1m, o.Metrics.R5m, o.Metrics.R15m, o.Metrics.R1h, o.Metrics.R24h, o.Metrics.RelVol5m,
             o.Setup.Breakout?.State.ToString(), o.Overextension.DoNotChase, o.Quality.Stale, o.Metrics.VwapDeviationPct, o.Metrics.Volume24hQuote,
             o.Setup.KeyLevel, o.Metrics.Alignment5m, components, o.Breakdown.Penalties.Sum(p => p.Points),
-            o.Plan?.EntryState.ToString(), o.Plan?.ChaseCeiling);
+            o.Plan?.EntryState.ToString(), o.Plan?.ChaseCeiling, o.Execution?.Status, o.Execution?.NetRewardRatio);
     }
 }
 

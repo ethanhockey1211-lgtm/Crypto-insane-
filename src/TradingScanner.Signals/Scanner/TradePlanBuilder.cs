@@ -115,15 +115,15 @@ public static class TradePlanBuilder
 
         var entry = (entryLow + entryHigh) / 2;
         var risk = entry - stop;
-        if (risk <= 0 || double.IsNaN(risk)) return null;
+        if (risk <= 0 || !double.IsFinite(risk) || stop <= 0) return null;
 
         var resistances = new List<double>();
         foreach (var s in new[] { s5, s15 })
-            if (s is not null) foreach (var l in s.Levels) if (l.Price > entry + 0.5 * risk) resistances.Add(l.Price);
-        if (s5?.RangeHigh is { } rh && rh > entry + 0.5 * risk) resistances.Add(rh);
+            if (s is not null) foreach (var l in s.Levels) if (double.IsFinite(l.Price) && l.Price > entry) resistances.Add(l.Price);
+        if (s5?.RangeHigh is { } rh && rh > entry) resistances.Add(rh);
         resistances = resistances.Distinct().OrderBy(x => x).ToList();
 
-        var t1 = Cap(entry + 2.0 * risk, resistances, entry + 1.0 * risk, basis, "T1");
+        var t1 = Cap(entry + 2.0 * risk, resistances, entry, basis, "T1");
         var t2 = Cap(Math.Max(t1 + 0.5 * risk, entry + 3.0 * risk), resistances.Where(r => r > t1 + 0.25 * risk).ToList(), t1 + 0.5 * risk, basis, "T2");
         var t3 = setup.Type == SetupType.RangeBreakout && s5 is { RangeHigh: { } h, RangeLow: { } lo } && h > lo
             ? Math.Max(t2 + 0.5 * risk, h + (h - lo))
@@ -140,7 +140,7 @@ public static class TradePlanBuilder
             (t1 - entry) / risk, (t2 - entry) / risk, (t3 - entry) / risk, basis, ceiling, state);
     }
 
-    /// <summary>Use the first resistance at or beyond the minimum acceptable reward instead of blindly targeting through it.</summary>
+    /// <summary>Cap at resistance; T1 must never skip a nearby wall just to manufacture acceptable reward.</summary>
     private static double Cap(double ideal, List<double> resistances, double minimum, List<string> basis, string name)
     {
         foreach (var r in resistances)
