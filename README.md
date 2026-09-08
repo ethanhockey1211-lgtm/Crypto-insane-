@@ -26,6 +26,30 @@ diagnosis, and stale rows are excluded from candidate counts. A stale high-prior
 can no longer hide a fresh eligible breakout at another; scoring uses the selected breakout's evidence.
 BTC and breadth context now exclude stale, future-dated or unwarmed inputs.
 
+### Discovery, inspection and entry alerts
+
+The market radar surfaces fresh 5m/15m gainers, unusual 5m volume, passing plans nearest their entry zones,
+and a separate 24h leaderboard covering the full catalog before analysis warms. Activity rankings do not
+establish an entry. The entry desk keeps eligible plans separate from collapsible developing plans and
+their blockers. Quick filters jump to in-zone plans, waiting plans, volume spikes or gainers; reset returns
+the full searchable catalog.
+
+Open any listed coin to inspect it. Pending history moves to the next available warm-up worker, and the
+chart and plan load automatically when ready. BTC/ETH start first; other untouched pairs retain volume
+order. Four workers and the existing shared REST rate limit remain in place. Failed granularities retry
+once without refetching successful responses, and partial failures never become execution-ready.
+
+**Entry alerts** are opt-in in the dashboard. New in-zone visits must pass the existing execution checks
+and remain observed across fresh scanner cycles for two seconds. Each coin has a ten-minute cooldown;
+enabling alerts or reconnecting does not replay existing setups. Sound must be armed in the current tab,
+desktop notifications require browser permission, and the tab must remain open. Settings are saved in
+this browser; recent entry-alert history is held only in the tab. These are inspection reminders, not orders.
+
+The evaluator now considers every matching pattern and active breakout level in the original priority
+order, selecting the first candidate that independently passes all checks. A blocked preferred retest
+therefore cannot hide a feasible alternative. If none passes, the preferred setup and its blockers stay
+visible. Resistance between the current price and the planned entry midpoint also caps the first target.
+
 This installation assumes eligible **Kraken+ app/web trades**: `Signals:Scanner:Execution:FeeBps` is `0`.
 That is a configured commission assumption, not a verified account entitlement. Kraken+ does not waive
 Kraken Pro fees; it has a monthly allowance, and app quote spreads and processing charges can still apply.
@@ -44,6 +68,8 @@ The full-universe configuration bounds candle retention to 300 bars for 1m/5m/15
 bars and 180 four-hour bars to fit the existing small hosting tier. These limits retain
 the fetched warm-up history; live indicators maintain their own incremental state. Chart/API history is
 limited to these buffers. Empty or unsupported live markets remain listed without invented prices.
+The API explicitly uses workstation garbage collection to reduce memory pressure on the small hosting
+tier; the full-universe scan is checked under a 384 MiB managed-heap limit.
 
 Kraken REST OHLC returns at most 720 recent rows, including the still-forming final candle. The adapter
 excludes that final candle and does not pretend pagination supplies older data. Multi-day backtests
@@ -94,9 +120,10 @@ when it is still below the no-chase ceiling; it is never presented as an immedia
 above entry now caps T1 even when it
 destroys the apparent reward/risk; it is no longer skipped to manufacture a better target.
 
-These checks do not filter historical signal collection or change its population. Existing performance
-reports remain evidence-signal reports, **not** validated results for this new execution policy. A separate
-out-of-sample evaluation with actual fees and paper fills is required before claiming predictive value.
+Signal collection still records evidence setups rather than executed trades. Candidate selection can now
+choose a different feasible pattern, so newly collected signals are not the same population as earlier
+first-match results. Existing reports are not validation of this updated policy. A separate out-of-sample
+evaluation with actual fees and paper fills is required before claiming predictive value.
 
 ## Status
 
@@ -128,6 +155,7 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/market/symbols` | Universe with latest quote, provenance (provider, exchange, exchange time, age, stale flag), 24h stats |
+| `POST /api/market/{symbol}/prepare` | Prioritize a pending catalog symbol for history loading; never adds unlisted markets or duplicate requests |
 | `GET /api/market/{symbol}/quote` | One symbol |
 | `GET /api/market/{symbol}/candles?tf=1m&limit=300` | Closed candles + forming bar. `tf` ∈ 1m,3m,5m,15m,30m,1h,4h |
 | `GET /api/market/{symbol}/analytics` | Per-timeframe indicators as of the last closed bar, market structure (swings, levels, trend), plus momentum and VWAP deviation projected at the live price |

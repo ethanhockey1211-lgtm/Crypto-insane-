@@ -12,6 +12,7 @@ import { AlertManager } from "@/components/AlertManager";
 import { PaperTrading } from "@/components/PaperTrading";
 import { Performance } from "@/components/Performance";
 import { Backtest } from "@/components/Backtest";
+import { EntryAlerts } from "@/components/EntryAlerts";
 
 type View = "scanner" | "heatmap" | "watchlist" | "alerts" | "paper" | "performance" | "backtest" | "tape";
 
@@ -35,14 +36,15 @@ export default function Page() {
     : <MarketTape onOpen={open} />;
 
   return (
-    <div className="h-dvh flex flex-col gap-1.5 p-1 sm:p-1.5">
+    <div className="h-dvh flex flex-col gap-2 p-2 sm:p-3 max-w-[2400px] mx-auto">
       <FeedBanner />
       <MarketHeader />
+      <EntryAlerts onOpen={open} />
       <nav className="flex items-center gap-1 text-[14px] px-1 overflow-x-auto no-scrollbar shrink-0" aria-label="Views">
         {(["scanner", "heatmap", "watchlist", "alerts", "paper", "performance", "backtest", "tape"] as View[]).map((v) => (
           <button key={v} aria-current={view === v ? "page" : undefined} onClick={() => setView(v)} className={`shrink-0 px-3 py-2 rounded-[3px] ${view === v ? "bg-navy-3 text-ink" : "text-ink-2 hover:text-ink"}`}>{v === "scanner" ? "Find setups" : v === "performance" ? "Signal evidence" : v === "paper" ? "Paper trading" : v === "backtest" ? "Historical replay" : v}</button>
         ))}
-        <span className="ml-auto text-ink-3 hidden md:inline">market → opportunities → setup → execution → risk</span>
+        <span className="ml-auto text-ink-3 hidden lg:inline text-[11px] tracking-wider uppercase">Spot markets · USD</span>
       </nav>
       {/* Phones: one panel at a time (the tape has its own tab). Desktop: scanner, setup drawer, and the tape strip. */}
       <div className={`flex-1 min-h-0 grid gap-1.5 grid-cols-1 grid-rows-[minmax(0,1fr)] ${active ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,560px)]" : ""}`}>

@@ -109,6 +109,21 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
 
     private Task<HttpClient> ClientAsync() => ClientAsync(_factory);
 
+    [Fact]
+    public async Task Prepare_only_accepts_current_catalog_symbols_without_creating_new_markets()
+    {
+        using var factory = new AllPairsFactory();
+        using var client = await ClientAsync(factory);
+        var known = await client.PostAsync("/api/market/USDT-USD/prepare", null);
+        Assert.Equal(HttpStatusCode.OK, known.StatusCode);
+        var result = await known.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("USDT-USD", result.GetProperty("symbol").GetString());
+        Assert.False(result.GetProperty("prioritized").GetBoolean()); // Warm-up is disabled in this fixture.
+        Assert.False(result.GetProperty("historyLoaded").GetBoolean());
+        var unknown = await client.PostAsync("/api/market/NOTLISTED-USD/prepare", null);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
     private static async Task<HttpClient> ClientAsync(Factory factory)
     {
         var client = factory.CreateClient();

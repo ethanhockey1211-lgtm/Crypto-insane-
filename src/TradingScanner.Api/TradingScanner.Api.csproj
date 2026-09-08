@@ -17,6 +17,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Keep the full Kraken universe within the small production instance's memory budget. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
   </PropertyGroup>
 
 </Project>

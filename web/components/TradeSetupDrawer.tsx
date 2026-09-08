@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useRow, useCycle, useFeed, useHub } from "@/lib/store";
+import { useRow, useSymbol, useCycle, useFeed, useHub } from "@/lib/store";
 import { scannerIsFresh } from "@/lib/decision";
 import { fmtAge, fmtPct, fmtPrice, fmtVolume, fmtX, setupLabel } from "@/lib/format";
 import type { Explanation, Opportunity } from "@/lib/types";
@@ -26,6 +26,7 @@ function Stat({ k, v, cls }: { k: string; v: React.ReactNode; cls?: string }) {
 
 export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol: string; onClose: () => void; watched: boolean; onWatch: (s: string) => void }) {
   const row = useRow(symbol);
+  const summary = useSymbol(symbol);
   const cycle = useCycle();
   const feed = useFeed();
   const hub = useHub();
@@ -34,6 +35,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
   const [opp, setOpp] = useState<Opportunity | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [priority, setPriority] = useState(false);
   const [ai, setAi] = useState<{ loading: boolean; result: Explanation | null; error: string | null }>({ loading: false, result: null, error: null });
   useEffect(() => { setAi({ loading: false, result: null, error: null }); }, [symbol]);
   const explain = async () => {
@@ -45,9 +47,15 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
   useEffect(() => {
     let alive = true;
     setOpp(null); setError(null);
+    setPriority(false);
+    void api.prepare(symbol).then(result => { if (alive) setPriority(result.prioritized); }).catch(() => { /* normal history queue remains active */ });
+    let loading = false;
     const load = async () => {
+      if (loading) return;
+      loading = true;
       try { const o = await api.opportunity(symbol); if (alive) { setOpp(o); setLoadedAt(Date.now()); setError(null); } }
       catch (e) { if (alive) setError((e as Error).message); }
+      finally { loading = false; }
     };
     void load();
     const id = setInterval(load, 2000);
@@ -60,7 +68,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const price = row?.price ?? opp?.price ?? 0;
+  const price = row?.price ?? summary?.quote?.price ?? opp?.price;
   const plan = opp?.plan ?? null;
   const m = opp?.metrics;
   const current = !error && now - loadedAt <= 10000 && hub === "connected" && feed?.live === true && scannerIsFresh(cycle.at, now) && !opp?.quality.stale;
@@ -68,7 +76,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
 
   return (
     <aside className="panel flex flex-col h-full min-h-0" aria-label={`${symbol} setup`}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 sm:px-4 py-2 sm:py-0 sm:h-12 border-b border-line">
+      <div className="relative z-10 shrink-0 min-h-12 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 sm:px-4 py-2 border-b border-line bg-navy">
         <span className="text-[16px] font-semibold">{symbol.replace("-USD", "")}<span className="text-ink-3 font-normal">/USD</span></span>
         <span className="num text-[16px]">{fmtPrice(price)}</span>
         {opp && <span className={`num text-[20px] font-medium ${scoreClass}`}>{opp.score.toFixed(0)}</span>}
@@ -82,7 +90,8 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
         <div className="h-[240px] sm:h-[300px] border-b border-line">
           <PriceChart symbol={symbol} levels={{ plan, keyLevel: opp?.setup.keyLevel ?? null, vwap: m?.vwap ?? null }} />
         </div>
-        {error && <div className="px-4 py-3 warn text-[12px]">Setup detail unavailable: {error}</div>}
+        {!opp && summary && <div className="m-3 rounded-lg border border-accent/25 bg-accent/5 p-4" role="status"><p className="text-[15px] font-medium">Preparing {symbol.replace("-", "/")} analysis</p><p className="mt-2 text-ink-2">{priority ? "This market has moved to the front of the history queue." : "History and indicators are loading. The plan will appear here when ready."} Quotes appear as Kraken provides them.</p><p className="mt-2 text-[12px] text-ink-3">You can keep browsing; loading continues in the background.</p></div>}
+        {error && (opp || !summary || !error.endsWith("404")) && <div className="px-4 py-3 warn text-[12px]">Setup detail unavailable: {error}</div>}
         {opp && (
           <>
             <Section title="Execution quality · not a price prediction">
@@ -197,7 +206,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
               <p className="text-[10.5px] text-ink-3 mt-2">Scoring config v{opp.breakdown.configVersion}. Scores rank evidence; they are not probabilities and nothing here is guaranteed.</p>
             </Section>
             <Section title="Position">
-              <PositionCalculator plan={plan} price={price} symbol={symbol} />
+              <PositionCalculator plan={plan} price={price ?? opp.price} symbol={symbol} />
             </Section>
           </>
         )}

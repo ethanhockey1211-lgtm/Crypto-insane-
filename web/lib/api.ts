@@ -26,6 +26,7 @@ async function send<T>(method: string, path: string, body?: unknown): Promise<T>
 export const api = {
   scanner: () => get<ScannerStream>("/api/scanner"),
   symbols: () => get<SymbolSummaryDto[]>("/api/market/symbols"),
+  prepare: (symbol: string) => send<{ symbol: string; prioritized: boolean; historyLoaded: boolean }>("POST", `/api/market/${encodeURIComponent(symbol)}/prepare`),
   opportunity: (symbol: string) => get<Opportunity>(`/api/scanner/${encodeURIComponent(symbol)}`),
   feed: () => get<FeedStatus>("/api/system/feed"),
   tape: (limit = 100) => get<TapeEvent[]>(`/api/scanner/tape?limit=${limit}`),

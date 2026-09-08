@@ -12,9 +12,24 @@ public static class OpportunityEvaluator
 {
     public static Opportunity Evaluate(ScanInput input, MarketContext market, double[]? btcReturns, Opportunity? previous, DateTimeOffset now, ScannerOptions options)
     {
+        Opportunity? preferred = null;
+        foreach (var setup in SetupClassifier.ClassifyCandidates(input.Projection, input.Breakouts, market))
+        {
+            var candidate = EvaluateCandidate(input, setup, market, btcReturns, previous, now, options);
+            preferred ??= candidate;
+            // Classification priority is useful only after feasibility. A spent retest at one
+            // level must not hide a fresh break at another level that independently passes all
+            // the same cost, data, liquidity, score, regime, and no-chase checks.
+            if (candidate.Execution?.Status == "Watch") return candidate;
+        }
+        // Keep the original preferred setup and its blockers visible when no candidate passes.
+        return preferred!;
+    }
+
+    private static Opportunity EvaluateCandidate(ScanInput input, SetupClassification setup, MarketContext market, double[]? btcReturns, Opportunity? previous, DateTimeOffset now, ScannerOptions options)
+    {
         var _o = options;
         var p = input.Projection;
-        var setup = SetupClassifier.Classify(p, input.Breakouts, market);
         var over = OverextensionAnalyzer.Assess(p, _o.Overextension);
         var plan = TradePlanBuilder.Build(setup, p, _o.Scoring);
         setup = CapConfidence(setup, plan, _o.Scoring);

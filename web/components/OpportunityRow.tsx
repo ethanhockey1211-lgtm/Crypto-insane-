@@ -25,7 +25,7 @@ export const OpportunityRow = memo(function OpportunityRow({ symbol, active, onO
     }
     lastPrice.current = row.price;
   }, [row]);
-  if (!row) return <PendingMarketRow symbol={symbol} />;
+  if (!row) return <PendingMarketRow symbol={symbol} onOpen={onOpen} />;
   const state = row.breakout ? STATE_SHORT[row.breakout] ?? row.breakout : "";
   const entry = row.entryState ? ENTRY_TAG[row.entryState] : null;
   const showChase = row.doNotChase || row.entryState === "Chase";
@@ -72,7 +72,7 @@ export const OpportunityRow = memo(function OpportunityRow({ symbol, active, onO
 });
 
 /** Catalog-only rows deliberately have no score, rank, or actionable trade plan. */
-function PendingMarketRow({ symbol }: { symbol: string }) {
+function PendingMarketRow({ symbol, onOpen }: { symbol: string; onOpen: (symbol: string) => void }) {
   const summary = useSymbol(symbol);
   if (!summary) return null;
   const { quote } = summary;
@@ -80,7 +80,7 @@ function PendingMarketRow({ symbol }: { symbol: string }) {
   const status = !hasPrice ? "Waiting for data" : quote.stale ? "Data unavailable" : !summary.historyLoaded ? "History pending" : "Analysis pending";
   const change = hasPrice && summary.open24h && summary.open24h > 0 ? quote.price / summary.open24h - 1
     : summary.change24hPct == null ? null : summary.change24hPct / 100;
-  return <tr className={`border-b border-line/60 h-11 sm:h-[30px] text-ink-3 ${quote?.stale ? "opacity-60" : ""}`} aria-label={`${symbol} ${status}`} title="This pair is listed on the exchange. A scored setup is not available yet.">
+  return <tr className={`row-hover cursor-pointer border-b border-line/60 h-11 sm:h-[30px] text-ink-3 ${quote?.stale ? "opacity-60" : ""}`} tabIndex={0} onClick={() => onOpen(symbol)} onKeyDown={e => { if (e.key === "Enter") onOpen(symbol); }} aria-label={`${symbol} ${status}`} title="Open this market to prioritize its history and inspect its chart.">
     <td className="num pl-3 pr-1 text-right w-8 hidden sm:table-cell">—</td>
     <td className="pl-3 sm:pl-2 pr-2 font-medium whitespace-nowrap text-ink-2">{symbol.replace("-USD", "")}{quote?.stale && <span className="tag ml-1 text-warn border-warn/40">stale</span>}</td>
     <td className="px-2 text-[11px] whitespace-nowrap">{status}</td>
