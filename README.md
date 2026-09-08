@@ -49,6 +49,16 @@ BTC and breadth context now exclude stale, future-dated or unwarmed inputs.
 
 ### Discovery, inspection and entry alerts
 
+The dashboard presents a coherent snapshot every five seconds. Price flashes are disabled; the market
+table, radar, decision board, heatmap, watchlist, tape and setup panel share the reading cadence instead
+of re-ranking on every incoming tick. **Pause display** holds a clearly labeled reference snapshot;
+**Refresh now** takes one fresh snapshot even while paused, and **Resume display** jumps to the latest
+data. Feed-loss and freshness warnings remain active. The underlying exchange feed, scanner and enabled
+entry alerts continue at their original cadence while the display is held.
+
+The setup chart updates price lines only when their values change. Position-calculator edits remain
+intact across refreshed plans; **Use latest plan** explicitly loads updated levels when desired.
+
 The market radar surfaces fresh 5m/15m gainers, unusual 5m volume, passing plans nearest their entry zones,
 and a separate 24h leaderboard covering the full catalog before analysis warms. Activity rankings do not
 establish an entry. The entry desk keeps eligible plans separate from collapsible developing plans and

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useCycle, useFeed, useHub, useMarket, useSymbol } from "@/lib/store";
+import { useCycle, useMarket, useSymbol, useDisplay } from "@/lib/display";
+import { useFeed, useHub } from "@/lib/store";
 import { scannerIsFresh } from "@/lib/decision";
 import { radarQuoteIsFresh } from "@/lib/radar";
 import { fmtPct, fmtPrice, signClass } from "@/lib/format";
@@ -10,25 +11,27 @@ const REGIME: Record<string, string> = { StrongRiskOn: "Strong risk-on", RiskOn:
 
 function Asset({ symbol, live }: { symbol: string; live: boolean }) {
   const summary = useSymbol(symbol);
+  const display = useDisplay();
   useHiddenMarkets();
   const quote = summary?.quote;
-  const fresh = live && radarQuoteIsFresh(quote, Date.now());
+  const fresh = live && radarQuoteIsFresh(quote, display.paused ? display.capturedAt ?? Date.now() : Date.now());
   const change = fresh && summary?.open24h && summary.open24h > 0 ? quote.price / summary.open24h - 1 : null;
   if (hiddenMarkets.isHidden(symbol)) return null;
   return <div className="min-w-0 px-3 py-2.5 border-l border-line"><p className="eyebrow">{symbol.replace("-USD", "")} <span className="text-ink-3">/ USD</span></p><div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-1"><span className="num text-[14px] font-medium">{fresh ? fmtPrice(quote.price) : "—"}</span><span className={`num text-[10px] ${signClass(change)}`}>{fmtPct(change)} <span className="text-ink-3">24h</span></span></div></div>;
 }
 
 export function MarketHeader() {
+  const display = useDisplay();
   const market = useMarket(); const feed = useFeed(); const hub = useHub(); const cycle = useCycle();
   const [, refreshClock] = useState(0);
   useEffect(() => { const timer = setInterval(() => refreshClock(value => value + 1), 1000); return () => clearInterval(timer); }, []);
-  const now = Date.now();
+  const now = display.paused ? display.capturedAt ?? Date.now() : Date.now();
   const connected = hub === "connected" && feed?.live === true;
   const fresh = connected && scannerIsFresh(cycle.at, now);
   const regime = fresh && market ? REGIME[market.regime] : "Warming up";
   const regimeClass = !fresh ? "text-ink-3" : market?.regime.endsWith("On") ? "text-up" : market?.regime.endsWith("Off") ? "text-down" : "text-accent";
-  const loaded = feed?.history.loaded ?? 0, total = feed?.history.total ?? 0;
-  const access = feed?.marketAccess;
+  const loaded = display.feed?.history.loaded ?? 0, total = display.feed?.history.total ?? 0;
+  const access = display.feed?.marketAccess;
   const marketScope = access ? [access.countryCode ? `${access.countryCode} market data` : "Market country unspecified", access.region].filter(Boolean).join(" · ") : "Market access not yet reported";
   return <header className="rounded-xl border border-line-strong bg-navy overflow-hidden shrink-0">
     <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-line">
@@ -40,9 +43,9 @@ export function MarketHeader() {
       <Asset symbol="BTC-USD" live={connected} /><Asset symbol="ETH-USD" live={connected} />
       <div className="px-3 py-2.5 border-l border-line"><p className="eyebrow">Above VWAP</p><p className="num text-[14px] mt-1">{fresh && market ? `${Math.round(market.breadthAboveVwap * 100)}%` : "—"}<span className="text-[10px] font-normal text-ink-3 ml-2">of assessed coins</span></p></div>
       <div className="col-span-2 sm:col-span-4 xl:col-span-1 px-4 py-2.5 border-t xl:border-t-0 xl:border-l border-line">
-        <div className="flex justify-between gap-2 text-[10px]"><span className="text-ink-2">{feed?.history.complete ? "History ready" : "Loading analysis"}</span><span className="num text-ink-3">{loaded} / {total}</span></div>
+        <div className="flex justify-between gap-2 text-[10px]"><span className="text-ink-2">{display.feed?.history.complete ? "History ready" : "Loading analysis"}</span><span className="num text-ink-3">{loaded} / {total}</span></div>
         <div className="mt-2 h-1 rounded-full bg-ground overflow-hidden"><div className="h-full bg-accent/70 rounded-full transition-[width] duration-500" style={{ width: `${total ? Math.min(100, loaded / total * 100) : 0}%` }} /></div>
-        {!!feed?.history.failed && <p className="text-warn text-[10px] mt-1">{feed.history.failed} markets waiting for complete history</p>}
+        {!!display.feed?.history.failed && <p className="text-warn text-[10px] mt-1">{display.feed.history.failed} markets waiting for complete history</p>}
       </div>
     </div>
   </header>;

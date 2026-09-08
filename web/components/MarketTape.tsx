@@ -1,5 +1,5 @@
 "use client";
-import { useTape } from "@/lib/store";
+import { useTape } from "@/lib/display";
 import { fmtTime } from "@/lib/format";
 
 export function MarketTape({ onOpen }: { onOpen: (s: string) => void }) {

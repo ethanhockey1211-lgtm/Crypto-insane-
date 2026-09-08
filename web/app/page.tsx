@@ -14,6 +14,8 @@ import { Performance } from "@/components/Performance";
 import { Backtest } from "@/components/Backtest";
 import { EntryAlerts } from "@/components/EntryAlerts";
 import { startHiddenMarkets } from "@/lib/hidden-markets";
+import { store as displayStore } from "@/lib/display";
+import { DisplayControls } from "@/components/DisplayControls";
 
 type View = "scanner" | "heatmap" | "watchlist" | "alerts" | "paper" | "performance" | "backtest" | "tape";
 
@@ -24,9 +26,10 @@ export default function Page() {
 
   useEffect(() => {
     const stopVisibility = startHiddenMarkets();
+    const stopDisplay = displayStore.start();
     void startConnection();
     const stopPolling = startFeedPolling();
-    return () => { stopPolling(); stopVisibility(); };
+    return () => { stopPolling(); stopVisibility(); stopDisplay(); };
   }, []);
   const open = useCallback((s: string) => setActive(s), []);
   const close = useCallback(() => setActive(null), []);
@@ -45,6 +48,7 @@ export default function Page() {
     <div className="h-dvh flex flex-col gap-2 p-2 sm:p-3 max-w-[2400px] mx-auto">
       <FeedBanner />
       <MarketHeader />
+      <DisplayControls />
       <EntryAlerts onOpen={open} />
       <nav className="flex items-center gap-1 text-[14px] px-1 overflow-x-auto no-scrollbar shrink-0" aria-label="Views">
         {(["scanner", "heatmap", "watchlist", "alerts", "paper", "performance", "backtest", "tape"] as View[]).map((v) => (

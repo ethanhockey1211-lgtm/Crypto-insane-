@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { store, useOrder } from "@/lib/store";
+import { store, useOrder } from "@/lib/display";
 import { fmtPct, fmtPrice } from "@/lib/format";
 
 type Metric = "r1m" | "r5m" | "r15m" | "r1h" | "r24h" | "score";

@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
-import { store, useAllOrder, useCycle, useFeed, useHub } from "@/lib/store";
+import { store, useAllOrder, useCycle, useDisplay } from "@/lib/display";
+import { useFeed, useHub } from "@/lib/store";
 import { SETUP_ORDER } from "@/lib/format";
 import { decision, scannerIsFresh } from "@/lib/decision";
 import { OpportunityRow } from "./OpportunityRow";
@@ -23,9 +24,10 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState("all");
   const cycle = useCycle(); const feed = useFeed(); const hub = useHub();
-  const live = hub === "connected" && feed?.live === true && scannerIsFresh(cycle.at, Date.now());
+  const display = useDisplay();
+  const live = hub === "connected" && feed?.live === true && scannerIsFresh(cycle.at, display.paused ? display.capturedAt ?? Date.now() : Date.now());
 
-  // Sorting reads the store directly: the list re-renders on list version changes, rows re-render on their own.
+  // Every table value and its ordering come from the same readable display snapshot.
   const symbols = useMemo(() => {
     const normalizedQuery = query.trim().toUpperCase().replace("/", "-");
     const filtered = order.filter(symbol => {
