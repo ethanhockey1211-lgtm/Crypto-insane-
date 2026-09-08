@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { store } from "./store";
-import type { ScannerRow, ScannerStream } from "./types";
+import { MarketStore, store } from "./store";
+import type { QuoteDto, ScannerRow, ScannerStream, SymbolSummaryDto } from "./types";
 
 const row = (symbol: string, score: number, price = 1): ScannerRow => ({
   rank: 0, symbol, score, setup: "None", confidence: "Low", price, entry: null, stop: null, target1: null, rr: null,
@@ -99,5 +99,84 @@ describe("MarketStore", () => {
     store.applyScanner(stream([{ ...original, entryLow: 9.5, entryHigh: 10.5, trigger: "Wait for a retest", setupBias: "Neutral" }]));
     expect(store.getOrder()).not.toBe(before);
     expect(store.getRow("PLAN-USD")).toMatchObject({ entryLow: 9.5, entryHigh: 10.5, trigger: "Wait for a retest", setupBias: "Neutral" });
+  });
+});
+
+const quote = (symbol: string, price = 1, receivedAtMs = 100): QuoteDto => ({
+  symbol, price, bid: price, ask: price, exchangeTimeMs: receivedAtMs, receivedAtMs, ageMs: 0,
+  stale: false, provider: "kraken", exchange: "Kraken",
+});
+const summary = (symbol: string, q: QuoteDto | null = null, historyLoaded = false): SymbolSummaryDto => ({
+  symbol, quote: q, historyLoaded, open24h: null, high24h: null, low24h: null, volume24hBase: null, change24hPct: null, tradesSeen: 0,
+});
+
+describe("MarketStore complete catalog", () => {
+  it("lists the entire catalog before quotes or history arrive without creating scored rows", () => {
+    const market = new MarketStore();
+    market.applySymbols(Array.from({ length: 650 }, (_, i) => summary(`COIN${i}-USD`)));
+    expect(market.getAllOrder()).toHaveLength(650);
+    expect(market.getAllOrder()).toContain("COIN649-USD");
+    expect(market.getOrder()).toEqual([]);
+    expect(market.getRow("COIN649-USD")).toBeNull();
+    expect(market.getSymbol("COIN649-USD")).toMatchObject({ quote: null, historyLoaded: false });
+  });
+
+  it("merges ranked updates with pending pairs without duplicates or retaining removed assessments", () => {
+    const market = new MarketStore();
+    market.applySymbols([summary("A-USD"), summary("B-USD")]);
+    market.applyScanner(stream([row("B-USD", 80)]));
+    expect(market.getAllOrder()).toEqual(["B-USD", "A-USD"]);
+    expect(market.getOrder()).toEqual(["B-USD"]);
+    expect(market.getRow("A-USD")).toBeNull();
+    market.applyScanner(stream([row("A-USD", 90), row("B-USD", 80)]));
+    expect(market.getAllOrder()).toEqual(["A-USD", "B-USD"]);
+    expect(market.getRow("A-USD")?.score).toBe(90);
+    market.applyScanner(stream([]));
+    expect(market.getAllOrder()).toEqual(["A-USD", "B-USD"]);
+    expect(market.getRow("A-USD")).toBeNull();
+  });
+
+  it("updates real quotes on pending pairs and keeps a late catalog response from rewinding price", () => {
+    const market = new MarketStore();
+    market.applySymbols([summary("A-USD", quote("A-USD"))]);
+    const order = market.getAllOrder();
+    market.applyQuotes([quote("A-USD", 2, 200)]);
+    expect(market.getAllOrder()).not.toBe(order);
+    market.applySymbols([summary("A-USD", quote("A-USD", 1, 100), true)]);
+    expect(market.getSymbol("A-USD")).toMatchObject({ quote: { price: 2, receivedAtMs: 200 }, historyLoaded: true });
+    expect(market.getRow("A-USD")).toBeNull();
+  });
+
+  it("propagates quote staleness even without price changes and clears it only on a newer quote", () => {
+    const market = new MarketStore();
+    market.applySymbols([summary("A-USD", quote("A-USD"))]);
+    market.applySymbols([summary("A-USD", { ...quote("A-USD"), stale: true, ageMs: 40000 })]);
+    expect(market.getSymbol("A-USD")?.quote?.stale).toBe(true);
+    market.applyQuotes([quote("A-USD")]);
+    expect(market.getSymbol("A-USD")?.quote?.stale).toBe(true);
+    market.applyQuotes([quote("A-USD", 1, 200)]);
+    expect(market.getSymbol("A-USD")?.quote?.stale).toBe(false);
+  });
+
+  it("expires quiet pending quotes without waiting for a new server message and rejects future timestamps", () => {
+    const market = new MarketStore();
+    market.applySymbols([summary("A-USD", quote("A-USD", 1, 100_000)), summary("B-USD", quote("B-USD", 1, 200_000))]);
+    const rankedOrder = market.getOrder();
+    market.expireCatalogQuotes(100_000);
+    expect(market.getSymbol("A-USD")?.quote?.stale).toBe(false);
+    expect(market.getSymbol("B-USD")?.quote?.stale).toBe(true);
+    market.expireCatalogQuotes(130_001);
+    expect(market.getSymbol("A-USD")?.quote?.stale).toBe(true);
+    expect(market.getOrder()).toBe(rankedOrder);
+    expect(market.getRow("A-USD")).toBeNull();
+  });
+
+  it("removes catalog entries when the exchange universe changes and discards missing quotes", () => {
+    const market = new MarketStore();
+    market.applySymbols([summary("A-USD"), summary("B-USD", quote("B-USD"))]);
+    market.applySymbols([summary("B-USD")]);
+    expect(market.getAllOrder()).toEqual(["B-USD"]);
+    expect(market.getSymbol("A-USD")).toBeNull();
+    expect(market.getSymbol("B-USD")?.quote).toBeNull();
   });
 });

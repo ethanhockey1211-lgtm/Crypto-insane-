@@ -5,8 +5,8 @@ using TradingScanner.Core.Providers;
 namespace TradingScanner.MarketData.Universe;
 
 /// <summary>
-/// Pure selection of the tradable universe from exchange products. Ranked by 24h quote volume,
-/// filtered to the configured quote currency, online status, and non-stablecoin bases.
+/// Pure selection of the market universe from exchange products. Always filtered to online pairs in the
+/// configured quote currency. All-pairs mode retains stablecoins, small markets and missing volume stats.
 /// </summary>
 public static class UniverseSelector
 {
@@ -18,8 +18,14 @@ public static class UniverseSelector
         var eligible = products
             .Where(p => p.IsOnline)
             .Where(p => string.Equals(p.QuoteCurrency, options.QuoteCurrency, StringComparison.OrdinalIgnoreCase))
-            .Where(p => !excluded.Contains(p.BaseCurrency))
+            .Where(p => options.IncludeAllPairs || !excluded.Contains(p.BaseCurrency))
             .ToList();
+
+        if (options.IncludeAllPairs)
+            return eligible.GroupBy(p => p.Symbol).Select(g => g.First())
+                .OrderByDescending(p => p.Volume24hQuote ?? 0m)
+                .ThenBy(p => p.Symbol.Value, StringComparer.Ordinal)
+                .ToList();
 
         var ranked = eligible
             .Where(p => (p.Volume24hQuote ?? 0m) >= options.MinVolume24hQuote)

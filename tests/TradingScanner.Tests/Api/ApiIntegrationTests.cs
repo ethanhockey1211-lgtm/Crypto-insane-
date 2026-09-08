@@ -69,6 +69,7 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseSetting("MarketData:WarmUpHistory", "false");
+            builder.UseSetting("MarketData:IncludeAllPairs", "false");
             builder.UseSetting("MarketData:UniverseSize", "2");
             builder.UseSetting("MarketData:StaleQuoteThreshold", "00:10:00");
             builder.UseEnvironment("Development");
@@ -82,6 +83,29 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
 
     private readonly Factory _factory;
     public ApiIntegrationTests(Factory factory) => _factory = factory;
+
+    private sealed class AllPairsFactory : Factory
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.UseSetting("MarketData:IncludeAllPairs", "true");
+        }
+    }
+
+    [Fact]
+    public async Task All_pairs_catalog_lists_unwarmed_and_unquoted_coins_despite_the_ranked_cap()
+    {
+        using var factory = new AllPairsFactory();
+        using var client = await ClientAsync(factory);
+        var symbols = await client.GetFromJsonAsync<List<SymbolSummaryDto>>("/api/market/symbols");
+        Assert.NotNull(symbols);
+        Assert.Equal(4, symbols.Count); // Ranked mode caps this same catalog at two and excludes USDT.
+        Assert.Contains(symbols, s => s.Symbol == "XRP-USD");
+        var stable = Assert.Single(symbols, s => s.Symbol == "USDT-USD");
+        Assert.Null(stable.Quote);
+        Assert.False(stable.HistoryLoaded);
+    }
 
     private Task<HttpClient> ClientAsync() => ClientAsync(_factory);
 

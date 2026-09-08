@@ -10,8 +10,11 @@ Nothing here predicts prices. No setup is ever presented as certain. Real-money 
 ## Kraken USD scanner
 
 The shipped configuration now uses Kraken public spot market data. The universe is built from live Kraken
-AssetPairs metadata and ranked by Kraken 24h USD volume; only online crypto USD pairs are admitted. BTC and
-ETH remain included for market context. REST and WebSocket symbols are normalized (XBT to BTC and XDG to
+AssetPairs metadata; every online crypto USD pair is listed, including stablecoins, wrapped assets,
+small markets and pairs without 24h volume statistics. `MarketData:IncludeAllPairs=true` bypasses the
+ranked universe's 200-pair cap, volume floor and excluded-base list. Execution checks remain separate:
+being listed does not mean a coin has a qualified entry. BTC and ETH remain available for market context.
+REST and WebSocket symbols are normalized (XBT to BTC and XDG to
 DOGE), and every quote retains Kraken provenance. Set `Kraken:CountryCode` to your ISO country code to request
 the exchange's regional pair filter; an unconfigured public listing is not a guarantee of availability for
 your account. Listings refresh when the service restarts.
@@ -33,8 +36,14 @@ See the [Kraken+ FAQ](https://support.kraken.com/articles/kraken-faq-subscriptio
 
 Provider configuration lives in `MarketData:Provider` (`kraken` or `coinbase`) and the corresponding
 `Kraken` / `Coinbase` section. Kraken uses a shared public REST limiter of two requests per second by
-default. History warms progressively while live trading data streams; a larger universe takes several
-minutes. No API key or trading permission is needed.
+default. The full catalog is visible and searchable immediately, with unassessed coins labeled as waiting
+for history or analytics. History warms progressively while live trading data streams; loading hundreds
+of pairs can take tens of minutes. No API key or trading permission is needed.
+
+The full-universe configuration bounds candle retention to 300 bars for 1m/5m/15m/30m/1h, 240 three-minute
+bars and 180 four-hour bars to fit the existing small hosting tier. These limits retain
+the fetched warm-up history; live indicators maintain their own incremental state. Chart/API history is
+limited to these buffers. Empty or unsupported live markets remain listed without invented prices.
 
 Kraken REST OHLC returns at most 720 recent rows, including the still-forming final candle. The adapter
 excludes that final candle and does not pretend pagination supplies older data. Multi-day backtests
@@ -137,7 +146,7 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | `GET /health/live`, `GET /health/ready` | Liveness / readiness (ready = feed connected and fresh) |
 | `/hubs/market` (SignalR) | `quotes` batches every 250 ms, `candle` closes for subscribed groups, `feed` status, `gap` notices, `scanner` ranked snapshot each cycle, `tape` events, `alert` firings |
 
-Startup sequence: list products → fetch 24h stats → select top-N USD pairs by quote volume → open sharded
+Startup sequence: list products → fetch 24h stats → select all online USD pairs → open sharded
 WebSocket connections → warm 1m/5m/15m/1h history via REST while live trades stream. Kraken warm-up uses
 four requests per symbol at two requests per second; 200 symbols take roughly seven minutes plus overhead.
 
@@ -145,8 +154,9 @@ four requests per symbol at two requests per second; 200 symbols take roughly se
 
 | Key | Default | Meaning |
 |---|---|---|
-| `UniverseSize` | 200 | Symbols after ranking by 24h quote volume |
-| `MinVolume24hQuote` | 1,000,000 | Liquidity floor in quote currency |
+| `IncludeAllPairs` | true (shipped configuration) | Include all online pairs in the configured quote currency; bypass size, volume and excluded-base filters |
+| `UniverseSize` | 200 | Ranked-mode cap; ignored when `IncludeAllPairs` is true |
+| `MinVolume24hQuote` | 1,000,000 | Ranked-mode liquidity floor; ignored when `IncludeAllPairs` is true |
 | `SymbolsPerConnection` | 60 | Sharding of the WebSocket subscription |
 | `CandleCloseGrace` | 2s | Wait for late trades before the clock closes a bar |
 | `StaleQuoteThreshold` | 30s | Quotes older than this are flagged stale |
@@ -236,7 +246,7 @@ not used by the product.
 
 ## Tests
 
-`dotnet test` runs 243 tests (5 need Postgres, see above) covering bucketing, candle construction, aggregation, series storage, universe selection,
+`dotnet test` covers bucketing, candle construction, aggregation, series storage, universe selection,
 the Kraken and Coinbase protocol parsers (against documented message shapes), REST clients (stubbed HTTP), the providers'
 reconnect/resubscribe/gap logic (scripted sockets), a real in-process WebSocket server drop-and-reconnect scenario,
 the engine loop, and the API host with a fake provider (REST, health, SignalR).

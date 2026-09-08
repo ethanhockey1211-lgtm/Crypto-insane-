@@ -44,4 +44,22 @@ public class UniverseSelectorTests
         var selected = UniverseSelector.Select(products, options);
         Assert.Equal(["BBB-USD"], selected.Select(p => p.Symbol.Value));
     }
+
+    [Fact]
+    public void All_pairs_mode_keeps_small_stable_wrapped_and_unmeasured_markets_without_a_size_cap()
+    {
+        var products = Enumerable.Range(0, 250).Select(i => P($"COIN{i}-USD", i))
+            .Concat([P("USDT-USD", 900m), P("WBTC-USD", 1m), P("NEW-USD", null),
+                P("BTC-USD", 500m), P("BTC-USD", 500m), P("ETH-EUR", 999m), P("OLD-USD", 999m, false)])
+            .ToArray();
+        var options = new MarketDataOptions { IncludeAllPairs = true, UniverseSize = 2, MinVolume24hQuote = 1_000_000m };
+        var selected = UniverseSelector.Select(products, options);
+        Assert.Equal(254, selected.Count);
+        Assert.Equal("USDT-USD", selected[0].Symbol.Value);
+        Assert.Contains(selected, p => p.Symbol.Value == "NEW-USD");
+        Assert.Contains(selected, p => p.Symbol.Value == "WBTC-USD");
+        Assert.Contains(selected, p => p.Symbol.Value == "COIN0-USD");
+        Assert.Single(selected, p => p.Symbol.Value == "BTC-USD");
+        Assert.DoesNotContain(selected, p => p.Symbol.Value is "ETH-EUR" or "OLD-USD");
+    }
 }

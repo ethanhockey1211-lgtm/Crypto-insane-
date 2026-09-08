@@ -25,9 +25,8 @@ public static class MarketEndpoints
             var now = time.GetUtcNow();
             var threshold = options.Value.StaleQuoteThreshold;
             var list = universe.Symbols
-                .Select(s => reader.Get(s))
-                .Where(s => s is not null)
-                .Select(s => ToSummary(s!, now, threshold))
+                .Select(s => reader.Get(s) is { } state ? ToSummary(state, now, threshold)
+                    : new SymbolSummaryDto(s.Value, null, null, null, null, null, null, 0, false))
                 .ToList();
             return Results.Ok(list);
         });

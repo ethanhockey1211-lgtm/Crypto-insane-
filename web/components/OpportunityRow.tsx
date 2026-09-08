@@ -1,6 +1,6 @@
 "use client";
 import { memo, useEffect, useRef } from "react";
-import { useRow } from "@/lib/store";
+import { useRow, useSymbol } from "@/lib/store";
 import { fmtPct, fmtPrice, fmtR, fmtX, signClass } from "@/lib/format";
 import { ScoreBar } from "./ScoreBar";
 
@@ -25,7 +25,7 @@ export const OpportunityRow = memo(function OpportunityRow({ symbol, active, onO
     }
     lastPrice.current = row.price;
   }, [row]);
-  if (!row) return null;
+  if (!row) return <PendingMarketRow symbol={symbol} />;
   const state = row.breakout ? STATE_SHORT[row.breakout] ?? row.breakout : "";
   const entry = row.entryState ? ENTRY_TAG[row.entryState] : null;
   const showChase = row.doNotChase || row.entryState === "Chase";
@@ -70,3 +70,31 @@ export const OpportunityRow = memo(function OpportunityRow({ symbol, active, onO
     </tr>
   );
 });
+
+/** Catalog-only rows deliberately have no score, rank, or actionable trade plan. */
+function PendingMarketRow({ symbol }: { symbol: string }) {
+  const summary = useSymbol(symbol);
+  if (!summary) return null;
+  const { quote } = summary;
+  const hasPrice = quote && Number.isFinite(quote.price) && quote.price > 0;
+  const status = !hasPrice ? "Waiting for data" : quote.stale ? "Data unavailable" : !summary.historyLoaded ? "History pending" : "Analysis pending";
+  const change = hasPrice && summary.open24h && summary.open24h > 0 ? quote.price / summary.open24h - 1
+    : summary.change24hPct == null ? null : summary.change24hPct / 100;
+  return <tr className={`border-b border-line/60 h-11 sm:h-[30px] text-ink-3 ${quote?.stale ? "opacity-60" : ""}`} aria-label={`${symbol} ${status}`} title="This pair is listed on the exchange. A scored setup is not available yet.">
+    <td className="num pl-3 pr-1 text-right w-8 hidden sm:table-cell">—</td>
+    <td className="pl-3 sm:pl-2 pr-2 font-medium whitespace-nowrap text-ink-2">{symbol.replace("-USD", "")}{quote?.stale && <span className="tag ml-1 text-warn border-warn/40">stale</span>}</td>
+    <td className="px-2 text-[11px] whitespace-nowrap">{status}</td>
+    <td className="px-2 hidden sm:table-cell">—</td>
+    <td className="px-2 hidden md:table-cell">—</td>
+    <td className="num px-2 text-right text-ink-2">{fmtPrice(hasPrice ? quote.price : null)}</td>
+    <td className="num px-2 text-right hidden xl:table-cell">—</td>
+    <td className="num px-2 text-right hidden xl:table-cell">—</td>
+    <td className="num px-2 text-right hidden xl:table-cell">—</td>
+    <td className="num px-2 text-right hidden sm:table-cell">—</td>
+    <td className="num px-2 text-right hidden lg:table-cell">—</td>
+    <td className="num px-2 text-right">—</td>
+    <td className="num px-2 text-right hidden lg:table-cell">—</td>
+    <td className={`num px-2 pr-3 md:pr-2 text-right ${signClass(change)}`}>{fmtPct(change)}</td>
+    <td className="num px-2 pr-3 text-right hidden md:table-cell">—</td>
+  </tr>;
+}

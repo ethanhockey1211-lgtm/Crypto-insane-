@@ -1,4 +1,4 @@
-import type { Explanation, BacktestApiRequest, BacktestResult, AlertEvent, AlertFieldInfo, AlertRule, AlertRuleRequest, CandlesResponse, FeedStatus, Opportunity, PaperAccount, PaperAccountView, PaperOrder, PaperPosition, PaperPositionView, PaperStats, PerformanceReport, PlaceOrderRequest, ScannerStream, SignalWithOutcome, TapeEvent } from "./types";
+import type { Explanation, BacktestApiRequest, BacktestResult, AlertEvent, AlertFieldInfo, AlertRule, AlertRuleRequest, CandlesResponse, FeedStatus, Opportunity, PaperAccount, PaperAccountView, PaperOrder, PaperPosition, PaperPositionView, PaperStats, PerformanceReport, PlaceOrderRequest, ScannerStream, SignalWithOutcome, SymbolSummaryDto, TapeEvent } from "./types";
 
 // Empty base = same origin (the API serves the built dashboard). `next dev` on :3000 talks to the API on :5080.
 export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:5080" : "")).replace(/\/$/, "");
@@ -25,6 +25,7 @@ async function send<T>(method: string, path: string, body?: unknown): Promise<T>
 
 export const api = {
   scanner: () => get<ScannerStream>("/api/scanner"),
+  symbols: () => get<SymbolSummaryDto[]>("/api/market/symbols"),
   opportunity: (symbol: string) => get<Opportunity>(`/api/scanner/${encodeURIComponent(symbol)}`),
   feed: () => get<FeedStatus>("/api/system/feed"),
   tape: (limit = 100) => get<TapeEvent[]>(`/api/scanner/tape?limit=${limit}`),

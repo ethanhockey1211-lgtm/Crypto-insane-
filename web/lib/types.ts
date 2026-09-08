@@ -92,6 +92,20 @@ export interface QuoteDto {
   exchange: string;
 }
 
+/** Every selected exchange pair, including pairs whose analysis has not warmed up. */
+export interface SymbolSummaryDto {
+  symbol: string;
+  quote: QuoteDto | null;
+  open24h: number | null;
+  high24h: number | null;
+  low24h: number | null;
+  volume24hBase: number | null;
+  /** Percentage points (unlike scanner returns, which are fractions). */
+  change24hPct: number | null;
+  tradesSeen: number;
+  historyLoaded: boolean;
+}
+
 export interface FeedStatus {
   provider: string;
   exchange: string;

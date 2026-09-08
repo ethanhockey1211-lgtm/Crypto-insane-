@@ -47,8 +47,9 @@ function retryStart(): void {
 }
 
 async function refresh(): Promise<void> {
-  const [scanner, feed, tape, alerts] = await Promise.allSettled([api.scanner(), api.feed(), api.tape(100), api.alerts.events(100)]);
+  const [scanner, symbols, feed, tape, alerts] = await Promise.allSettled([api.scanner(), api.symbols(), api.feed(), api.tape(100), api.alerts.events(100)]);
   if (scanner.status === "fulfilled") store.applyScanner(scanner.value);
+  if (symbols.status === "fulfilled") store.applySymbols(symbols.value);
   if (feed.status === "fulfilled") store.setFeed(feed.value);
   if (tape.status === "fulfilled") store.pushTape(tape.value, true);
   if (alerts.status === "fulfilled") store.pushAlerts(alerts.value, true);
@@ -70,10 +71,20 @@ export async function unsubscribeCandles(symbol: string, tf: string): Promise<vo
   if (connection?.state === HubConnectionState.Connected) await connection.invoke("UnsubscribeCandles", symbol, tf).catch(() => undefined);
 }
 
-/** Feed status is also polled slowly so a silent hub still surfaces a dead feed. */
+/** Poll feed status and catalog so warm-up progress and newly listed pairs remain visible. */
 export function startFeedPolling(): () => void {
+  let active = true;
+  let polling = false;
+  const expiry = setInterval(() => store.expireCatalogQuotes(), 1000);
   const id = setInterval(async () => {
-    try { store.setFeed(await api.feed()); } catch { /* the hub state already reflects loss of the API */ }
+    if (polling) return;
+    polling = true;
+    const [feed, symbols] = await Promise.allSettled([api.feed(), api.symbols()]);
+    if (active) {
+      if (feed.status === "fulfilled") store.setFeed(feed.value);
+      if (symbols.status === "fulfilled") store.applySymbols(symbols.value);
+    }
+    polling = false;
   }, 10_000);
-  return () => clearInterval(id);
+  return () => { active = false; clearInterval(id); clearInterval(expiry); };
 }

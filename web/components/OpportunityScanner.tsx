@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { store, useOrder } from "@/lib/store";
+import { store, useAllOrder } from "@/lib/store";
 import { SETUP_ORDER } from "@/lib/format";
 import { OpportunityRow } from "./OpportunityRow";
 import { DecisionBoard } from "./DecisionBoard";
@@ -12,16 +12,27 @@ const SORTS: { key: SortKey; label: string }[] = [
 ];
 
 export function OpportunityScanner({ active, onOpen }: { active: string | null; onOpen: (s: string) => void }) {
-  const order = useOrder();
+  const order = useAllOrder();
   const [sort, setSort] = useState<SortKey>("score");
   const [onlySetups, setOnlySetups] = useState(false);
   const [query, setQuery] = useState("");
 
   // Sorting reads the store directly: the list re-renders on list version changes, rows re-render on their own.
   const symbols = useMemo(() => {
-    const rows = order.map((s) => store.getRow(s)).filter((r): r is NonNullable<typeof r> => r !== null);
-    const filtered = rows.filter((r) => (!onlySetups || r.setup !== "None") && (!query || r.symbol.includes(query.toUpperCase())));
-    const val = (r: (typeof rows)[number]): number => {
+    const normalizedQuery = query.trim().toUpperCase().replace("/", "-");
+    const filtered = order.filter(symbol => {
+      const row = store.getRow(symbol);
+      return (!onlySetups || (row && row.setup !== "None")) && (!normalizedQuery || symbol.includes(normalizedQuery));
+    });
+    const val = (symbol: string): number => {
+      const r = store.getRow(symbol);
+      const summary = store.getSymbol(symbol);
+      if (!r) {
+        if (sort === "r24h") return summary?.quote && summary.quote.price > 0 && summary.open24h && summary.open24h > 0 ? summary.quote.price / summary.open24h - 1
+          : summary?.change24hPct != null ? summary.change24hPct / 100 : -Infinity;
+        if (sort === "volume24h" && summary?.volume24hBase != null && summary.quote) return summary.volume24hBase * summary.quote.price;
+        return -Infinity;
+      }
       switch (sort) {
         case "momentum": return r.r15m ?? -Infinity;
         case "volume": return r.relVol ?? -Infinity;
@@ -32,17 +43,18 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
         default: return r.score;
       }
     };
-    if (sort !== "score") filtered.sort((a, b) => val(b) - val(a) || b.score - a.score);
-    return filtered.map((r) => r.symbol);
+    if (sort !== "score") filtered.sort((a, b) => val(b) - val(a) || (store.getRow(b)?.score ?? -Infinity) - (store.getRow(a)?.score ?? -Infinity));
+    return filtered;
   }, [order, sort, onlySetups, query]);
+  const pending = order.filter(symbol => !store.getRow(symbol)).length;
 
   return (
     <section className="panel min-h-0 h-full overflow-auto">
       <DecisionBoard onOpen={onOpen} />
       <details open className="p-1">
-      <summary className="cursor-pointer px-3 py-3 text-[14px] text-ink-2">Full market · filters and detailed indicators</summary>
+      <summary className="cursor-pointer px-3 py-3 text-[14px] text-ink-2">All USD pairs · filters and detailed indicators</summary>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 sm:py-0 sm:h-9 border-b border-line">
-        <span className="eyebrow">Opportunities</span>
+        <span className="eyebrow">All coins</span>
         <span className="num text-[11px] text-ink-3 whitespace-nowrap">{symbols.length} of {order.length}</span>
         <label className="flex items-center gap-1.5 text-[11px] text-ink-2 ml-2 whitespace-nowrap">
           <input type="checkbox" checked={onlySetups} onChange={(e) => setOnlySetups(e.target.checked)} /> setups only
@@ -58,6 +70,7 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
           {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
       </div>
+      {pending > 0 && <p className="px-3 py-2 text-[12px] text-ink-2" role="status">{pending} of {order.length} pairs awaiting analysis. All pairs are listed while history loads; scores and plans appear as data becomes available.</p>}
       <div className="overflow-auto min-h-0 flex-1">
         <table className="w-full border-collapse text-[12px]">
           <thead className="sticky top-0 bg-navy z-10">
@@ -82,7 +95,7 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
           <tbody>
             {symbols.map((s) => <OpportunityRow key={s} symbol={s} active={active === s} onOpen={onOpen} />)}
             {symbols.length === 0 && (
-              <tr><td colSpan={15} className="px-3 py-8 text-center text-ink-3">{order.length ? "No pairs match these table filters. Clear the symbol filter or turn off setups only to see the full scan." : "No opportunities yet. The scanner ranks the universe once analytics have warmed up."}</td></tr>
+              <tr><td colSpan={15} className="px-3 py-8 text-center text-ink-3">{order.length ? "No pairs match these table filters. Clear the symbol filter or turn off setups only to see all coins." : "Loading the exchange's USD pairs. Coins appear here before their analysis is ready."}</td></tr>
             )}
           </tbody>
         </table>
