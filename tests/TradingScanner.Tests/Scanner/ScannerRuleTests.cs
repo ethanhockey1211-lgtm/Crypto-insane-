@@ -84,6 +84,43 @@ public class SetupClassifierTests
         Assert.NotEqual(SetupType.Breakout, c.Type);
     }
 
+    [Theory]
+    [InlineData(BreakoutState.RetestHeld, 13)]
+    [InlineData(BreakoutState.Confirmed, 5)]
+    public void Stale_best_level_does_not_hide_a_fresh_breakout_at_another_level(BreakoutState staleState, int staleAge)
+    {
+        // The tracker ranks state and distance, without the scanner's freshness limits.
+        // An old held retest or nearer old confirmation may therefore occupy BestUp.
+        var stale = Status(Level("old", 1.405), staleState, barsSince: staleAge, narrative: "old breakout");
+        var fresh = Status(R, BreakoutState.Confirmed, barsSince: 1, narrative: "fresh breakout");
+        var b = Breakouts(stale, null, fresh);
+        var p = Proj(price: 1.408, m5: Ind(close: 1.408, align: EmaAlignment.Mixed, relVol: 1.0),
+            mom: Mom(accel5: -0.001));
+
+        var c = SetupClassifier.Classify(p, b, Market());
+
+        Assert.Equal(SetupType.Breakout, c.Type);
+        Assert.Same(fresh, c.Breakout);
+        Assert.Equal(R.Price, c.KeyLevel);
+        Assert.Contains("fresh breakout", c.Evidence);
+        var score = OpportunityScorer.Score(p, c, TradePlanBuilder.Build(c, p),
+            OverextensionAnalyzer.Assess(p, new()), b, Market(), 4, 50_000_000, new());
+        Assert.Contains(score.Components, component => component.Name == OpportunityScorer.Breakout
+            && component.Evidence.Contains("fresh breakout"));
+    }
+
+    [Fact]
+    public void Eligible_retest_keeps_priority_over_a_fresh_confirmation()
+    {
+        var held = Status(R, BreakoutState.RetestHeld, barsSince: 12);
+        var fresh = Status(Level("new", 1.405), BreakoutState.Confirmed, barsSince: 0);
+
+        var c = SetupClassifier.Classify(Proj(price: 1.408), Breakouts(held, null, fresh), Market());
+
+        Assert.Equal(SetupType.BreakoutRetest, c.Type);
+        Assert.Same(held, c.Breakout);
+    }
+
     [Fact]
     public void Vwap_reclaim_needs_time_below_and_volume()
     {

@@ -7,6 +7,7 @@ using TradingScanner.Core;
 using TradingScanner.Core.Providers;
 using TradingScanner.MarketData.Coinbase;
 using TradingScanner.MarketData.Engine;
+using TradingScanner.MarketData.Kraken;
 using TradingScanner.MarketData.Metrics;
 using TradingScanner.MarketData.Universe;
 using TradingScanner.MarketData.WebSockets;
@@ -26,6 +27,7 @@ public static class ServiceCollectionExtensions
     {
         services.Configure<MarketDataOptions>(configuration.GetSection(MarketDataOptions.SectionName));
         services.Configure<CoinbaseOptions>(configuration.GetSection(CoinbaseOptions.SectionName));
+        services.Configure<KrakenOptions>(configuration.GetSection(KrakenOptions.SectionName));
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<MarketDataMetrics>();
         services.AddSingleton<MarketEventChannel>();
@@ -41,9 +43,22 @@ public static class ServiceCollectionExtensions
             http.DefaultRequestHeaders.UserAgent.ParseAdd(o.UserAgent);
         });
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<CoinbaseOptions>>().Value);
+        services.AddHttpClient<KrakenRestClient>((sp, http) =>
+        {
+            var o = sp.GetRequiredService<IOptions<KrakenOptions>>().Value;
+            http.BaseAddress = new Uri(o.RestUrl.TrimEnd('/') + "/");
+            http.Timeout = TimeSpan.FromSeconds(20);
+            http.DefaultRequestHeaders.UserAgent.ParseAdd(o.UserAgent);
+        });
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<KrakenOptions>>().Value);
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<MarketDataOptions>>().Value);
 
-        services.AddSingleton<IMarketDataProvider>(sp => ActivatorUtilities.CreateInstance<CoinbaseExchangeProvider>(sp));
+        services.AddSingleton<IMarketDataProvider>(sp => sp.GetRequiredService<MarketDataOptions>().Provider.Trim().ToLowerInvariant() switch
+        {
+            KrakenExchangeProvider.ProviderName => ActivatorUtilities.CreateInstance<KrakenExchangeProvider>(sp),
+            CoinbaseExchangeProvider.ProviderName => ActivatorUtilities.CreateInstance<CoinbaseExchangeProvider>(sp),
+            var name => throw new InvalidOperationException($"Unsupported MarketData:Provider '{name}'. Use kraken or coinbase."),
+        });
 
         services.AddSingleton(sp => new MarketStateEngine(
             sp.GetRequiredService<MarketEventChannel>(),

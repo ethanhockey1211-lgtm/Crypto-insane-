@@ -91,4 +91,13 @@ describe("MarketStore", () => {
     store.applyQuotes([{ symbol: "STALE-USD", price: 1, bid: 1, ask: 1, exchangeTimeMs: 0, receivedAtMs: 0, ageMs: 40000, stale: true, provider: "t", exchange: "t" }]);
     expect(store.getRow("STALE-USD")?.stale).toBe(true);
   });
+
+  it("updates changed entry zones, triggers, and bias even when score and midpoint stay the same", () => {
+    const original = { ...row("PLAN-USD", 70), entry: 10, entryLow: 9, entryHigh: 11, trigger: "Wait for a close", setupBias: "Bullish" as const };
+    store.applyScanner(stream([original]));
+    const before = store.getOrder();
+    store.applyScanner(stream([{ ...original, entryLow: 9.5, entryHigh: 10.5, trigger: "Wait for a retest", setupBias: "Neutral" }]));
+    expect(store.getOrder()).not.toBe(before);
+    expect(store.getRow("PLAN-USD")).toMatchObject({ entryLow: 9.5, entryHigh: 10.5, trigger: "Wait for a retest", setupBias: "Neutral" });
+  });
 });

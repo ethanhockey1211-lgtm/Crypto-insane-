@@ -61,7 +61,9 @@ public static class OpportunityScorer
         // Breakout / retest quality
         {
             var f = 0.0; var ev = "no breakout in progress";
-            if (breakouts?.BestUp is { } b)
+            var selectedBreakout = setup.Type is SetupType.Breakout or SetupType.RangeBreakout or SetupType.BreakoutRetest
+                ? setup.Breakout : breakouts?.BestUp;
+            if (selectedBreakout is { } b)
             {
                 f = b.State switch
                 {
