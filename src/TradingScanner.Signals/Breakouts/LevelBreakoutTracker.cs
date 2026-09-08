@@ -220,7 +220,8 @@ public sealed class LevelBreakoutTracker
 
     public static string P(double level)
     {
-        var digits = level >= 1000 ? 1 : level >= 100 ? 2 : level >= 1 ? 4 : level >= 0.01 ? 5 : 7;
+        var digits = level >= 1000 ? 1 : level >= 100 ? 2 : level >= 1 ? 4 : level >= 0.01 ? 5
+            : level > 0 ? Math.Min(20, Math.Max(7, 4 - (int)Math.Floor(Math.Log10(level)))) : 7;
         return level.ToString("F" + digits, CultureInfo.InvariantCulture);
     }
 }

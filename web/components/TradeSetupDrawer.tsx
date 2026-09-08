@@ -94,9 +94,12 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
                   <Stat k="Net R:R to T1 at assessed price" v={opp.execution.netRewardRatio == null ? "—" : `${opp.execution.netRewardRatio.toFixed(2)}R`} />
                   <Stat k="Required break-even win rate" v={fmtPct(opp.execution.breakEvenWinRate)} />
                   <Stat k="Maximum entry after costs" v={fmtPrice(opp.execution.maxEntryPriceAfterCosts)} cls="warn" />
+                  <Stat k="Fee assumption · each side" v={opp.execution.feeBps != null ? `${opp.execution.feeBps} bps` : "Unavailable"} />
+                  <Stat k="Slippage assumption · each side" v={opp.execution.slippageBps != null ? `${opp.execution.slippageBps} bps` : "Unavailable"} />
                 </div>
                 <ul className="text-[12px] space-y-1">{opp.execution.reasons.map((reason, i) => <li key={i}>{reason}</li>)}</ul>
                 <p className="text-[11px] text-ink-3 mt-2">Assessed at {fmtPrice(opp.price)}. Includes configured fees, slippage and spread on entry and exit. Break-even is a required success rate, not a predicted probability. Actual fills and stop losses can be worse.</p>
+                {opp.quality.provider === "kraken" && <p className="text-[12px] text-ink-2 mt-2">Kraken+ fee waiver assumed within your allowance. App quote spreads can differ from this market feed; verify the final quote. <a href="https://support.kraken.com/articles/kraken-faq-subscription-service-overview" target="_blank" rel="noreferrer" className="underline underline-offset-2">Kraken+ terms</a></p>}
               </> : <p className="text-[12px] warn">Execution assessment unavailable. Score is not a buy signal.</p>}
             </Section>
             <Section title="Plan">

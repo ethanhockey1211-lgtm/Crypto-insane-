@@ -1,11 +1,13 @@
 "use client";
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { useFeed } from "@/lib/store";
 import { fmtPct, fmtPrice, fmtTime, setupLabel } from "@/lib/format";
 import type { BacktestResult } from "@/lib/types";
 import { BucketTable } from "./Performance";
 
 export function Backtest({ onOpen }: { onOpen: (s: string) => void }) {
+  const feed = useFeed();
   const [symbols, setSymbols] = useState("XRP-USD, SOL-USD");
   const [days, setDays] = useState(3);
   const [fee, setFee] = useState(10);
@@ -45,6 +47,7 @@ export function Backtest({ onOpen }: { onOpen: (s: string) => void }) {
         <button className="px-3 py-1 bg-navy-3 rounded-[3px] text-[12px] disabled:opacity-50" disabled={running} onClick={run}>{running ? "Running…" : "Run"}</button>
       </div>
       {error && <div className="px-3 py-1.5 warn text-[11.5px] border-b border-line">{error}</div>}
+      {feed?.provider === "kraken" && <p className="px-4 py-3 text-[14px] text-ink-2 border-b border-line">Kraken supplies about 12 hours of recent 1-minute candles. Multi-day replay requires an archived history source; incomplete history is rejected.</p>}
       <div className="overflow-auto min-h-0 flex-1">
         <p className="px-4 py-3 text-[14px] text-ink-2 border-b border-line">Historical signal replay, not a validated trading strategy. R values use the simulated fill and costs on both sides. Target-hit rates and price returns remain gross. This replay does not filter by the live execution checks, model order-book depth, or prove out-of-sample profitability.</p>
         {result && (

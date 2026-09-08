@@ -9,6 +9,14 @@ namespace TradingScanner.Tests.Signals;
 
 public class LevelBreakoutTrackerTests
 {
+    [Fact]
+    public void Tiny_coin_entry_stop_and_target_remain_distinct_in_narratives()
+    {
+        Assert.Equal("0.0000036000", LevelBreakoutTracker.P(0.00000360));
+        Assert.Equal("0.0000035900", LevelBreakoutTracker.P(0.00000359));
+        Assert.Equal("0.0000036300", LevelBreakoutTracker.P(0.00000363));
+    }
+
     private static readonly Symbol Xrp = new("XRP-USD");
     private const double Atr = 0.01;
     private static readonly PriceLevel Level = new("5m:1:H", 1.400, LevelSource.Swing, 2, T.Base, T.Base, 0, 2);

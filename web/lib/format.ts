@@ -1,6 +1,8 @@
 export function fmtPrice(p: number | null | undefined): string {
   if (p == null || !isFinite(p)) return "—";
-  const digits = p >= 1000 ? 1 : p >= 100 ? 2 : p >= 1 ? 4 : p >= 0.01 ? 5 : 7;
+  // Tiny Kraken prices need enough significant digits to distinguish entry, stop and target.
+  const digits = p >= 1000 ? 1 : p >= 100 ? 2 : p >= 1 ? 4 : p >= 0.01 ? 5
+    : p > 0 ? Math.min(20, Math.max(7, 4 - Math.floor(Math.log10(p)))) : 7;
   return p.toFixed(digits);
 }
 

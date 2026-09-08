@@ -15,7 +15,17 @@ public sealed class ProviderCandleSource : IHistoricalCandleSource
 {
     private readonly IMarketDataProvider _provider;
     public ProviderCandleSource(IMarketDataProvider provider) => _provider = provider;
-    public Task<IReadOnlyList<Candle>> GetM1Async(Symbol symbol, DateTimeOffset from, DateTimeOffset to, CancellationToken ct) => _provider.GetHistoricalCandlesAsync(symbol, Timeframe.M1, from, to, ct);
+    public async Task<IReadOnlyList<Candle>> GetM1Async(Symbol symbol, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        var candles = await _provider.GetHistoricalCandlesAsync(symbol, Timeframe.M1, from, to, ct);
+        // Some providers silently truncate history (Kraken returns at most 720 recent OHLC rows).
+        // Never label a few hours of data as a multi-day backtest, including its warm-up period.
+        if (candles.Count == 0 || candles.Min(c => c.OpenTime) > from.AddMinutes(1)
+            || candles.Max(c => c.CloseTime) < to.AddMinutes(-2))
+            throw new InvalidOperationException($"{_provider.Exchange} did not supply the requested history and warm-up window. "
+                + "Kraken public 1m OHLC covers only about 12 recent hours; multi-day backtests require an archived history source.");
+        return candles;
+    }
 }
 
 public static class BacktestEndpoints

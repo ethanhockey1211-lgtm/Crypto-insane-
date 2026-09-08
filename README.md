@@ -7,12 +7,46 @@ terminal-style UI. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the desi
 
 Nothing here predicts prices. No setup is ever presented as certain. Real-money execution does not exist in this codebase.
 
+## Kraken USD scanner
+
+The shipped configuration now uses Kraken public spot market data. The universe is built from live Kraken
+AssetPairs metadata and ranked by Kraken 24h USD volume; only online crypto USD pairs are admitted. BTC and
+ETH remain included for market context. REST and WebSocket symbols are normalized (XBT to BTC and XDG to
+DOGE), and every quote retains Kraken provenance. Set `Kraken:CountryCode` to your ISO country code to request
+the exchange's regional pair filter; an unconfigured public listing is not a guarantee of availability for
+your account. Listings refresh when the service restarts.
+
+The decision board separates in-zone candidates, setups waiting for price, and developing setups still
+blocked by execution checks. It shows entry zones, confirmation triggers, stops, first targets and net R
+at the assessed price. Developing setups are not qualified entries. All blocker reasons contribute to the
+diagnosis, and stale rows are excluded from candidate counts. A stale high-priority breakout at one level
+can no longer hide a fresh eligible breakout at another; scoring uses the selected breakout's evidence.
+BTC and breadth context now exclude stale, future-dated or unwarmed inputs.
+
+This installation assumes eligible **Kraken+ app/web trades**: `Signals:Scanner:Execution:FeeBps` is `0`.
+That is a configured commission assumption, not a verified account entitlement. Kraken+ does not waive
+Kraken Pro fees; it has a monthly allowance, and app quote spreads and processing charges can still apply.
+The scanner retains observed market spread and `SlippageBps=5` per side. Public spot bid/ask is not the
+Kraken app's executable Instant Buy/Sell quote. Verify the app's final price and remaining allowance;
+change the fee/slippage assumptions for your actual costs. The drawer shows the configured assumptions.
+See the [Kraken+ FAQ](https://support.kraken.com/articles/kraken-faq-subscription-service-overview).
+
+Provider configuration lives in `MarketData:Provider` (`kraken` or `coinbase`) and the corresponding
+`Kraken` / `Coinbase` section. Kraken uses a shared public REST limiter of two requests per second by
+default. History warms progressively while live trading data streams; a larger universe takes several
+minutes. No API key or trading permission is needed.
+
+Kraken REST OHLC returns at most 720 recent rows, including the still-forming final candle. The adapter
+excludes that final candle and does not pretend pagination supplies older data. Multi-day backtests
+therefore require an archived history source; the API rejects incomplete requested history instead of
+reporting a partial run as a full multi-day test. See [Kraken OHLC limits](https://docs.kraken.com/api-reference/market-data/get-ohlc-data).
+
 ## Execution-quality checks
 
 ### Decision workspace and validation
 
-The default scanner view is now a maximum-three candidate shortlist. In-zone candidates appear first,
-then candidates waiting for their zone, with evidence scores used for ordering within each group.
+The default scanner view separates in-zone candidates from candidates waiting for their zone,
+with evidence scores used for ordering within each group and controls to expand each list.
 Only backend `Watch` assessments with valid positive net R enter the shortlist. There is no automated
 buy state: users must verify the trigger. Blocked entries remain inspectable in the collapsible full-market
 table. Missing assessments, stale quotes, disconnected feeds and scanner snapshots older than ten seconds
@@ -38,7 +72,7 @@ on the opportunity response reports `Blocked` or `Watch`, reasons, net reward/ri
 current price, and the **required** break-even win rate. This is not a forecast, calibrated win probability,
 or automatic trigger confirmation. All checks passing still means watch and verify the plan's trigger.
 
-`Scanner:Execution` configures per-side `FeeBps` (default 60), `SlippageBps` (5),
+`Signals:Scanner:Execution` configures per-side `FeeBps` (library default 60; this Kraken+ deployment 0), `SlippageBps` (5),
 `MinNetRewardRatio` (1.5), `MaxSpreadBps` (20), `MinVolume24hQuote` (2,000,000), and `MinScore` (60).
 Fees are conservative assumptions, not exchange fee quotes; configure your actual tier. Half the observed
 spread, fees and slippage are applied on each side at the respective entry/exit price. Stops can gap and
@@ -59,7 +93,7 @@ out-of-sample evaluation with actual fees and paper fills is required before cla
 
 | Phase | Scope | State |
 |---|---|---|
-| 1 | Market data: Coinbase Exchange WebSocket adapter, universe selection, candle engine (1m→4h), REST warm-up, reconnect/gap handling, API + SignalR stream | Implemented, tested |
+| 1 | Market data: Kraken Spot and Coinbase Exchange adapters, universe selection, candle engine (1m→4h), REST warm-up, reconnect/gap handling, API + SignalR stream | Implemented, tested |
 | 2 | Analytics: EMA 9/20/50/200, Wilder RSI/ATR, session VWAP with deviation bands, relative volume, realized volatility, multi-horizon momentum with acceleration, EMA alignment/cross tracking; rebuild-from-history; `GET /api/market/{symbol}/analytics` | Implemented, tested |
 | 3 | Market structure on 5m/15m/1h: confirmed fractal swings, stable clustered levels, HH/HL/LH/LL/EH/EL trend labels, range and session extremes; per-level breakout state machine (Watching → Approaching → Attempt → Confirmed → Retesting → Retest Held / Failed / Extended) in ATR units with retest metrics and narratives; chronological history replay through the live path; `GET /api/market/{symbol}/breakouts` | Implemented, tested |
 | 4 | Scanner: BTC/ETH state, breadth and risk regime; anti-FOMO overextension assessment with DO NOT CHASE; setup classification (Breakout, Breakout+Retest, VWAP Reclaim, Support Bounce, Momentum Continuation, Range Breakout, Trend Pullback, Reversal, Volume/Volatility Expansion); configurable 0–100 score with evidence per component and penalty; trade plans with entry zone, trigger, invalidation, stop, three resistance-capped targets and R:R; why/invalidation/risk explanations; score-change reasons; BTC correlation; ranked universe every second over SignalR; market tape | Implemented, tested |
@@ -104,8 +138,8 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | `/hubs/market` (SignalR) | `quotes` batches every 250 ms, `candle` closes for subscribed groups, `feed` status, `gap` notices, `scanner` ranked snapshot each cycle, `tape` events, `alert` firings |
 
 Startup sequence: list products → fetch 24h stats → select top-N USD pairs by quote volume → open sharded
-WebSocket connections (`matches`, `ticker`, `heartbeat`) → warm 1m/5m/15m/1h history via REST while live
-trades stream. Expect roughly a minute for warm-up of 200 symbols at the default 8 requests/second.
+WebSocket connections → warm 1m/5m/15m/1h history via REST while live trades stream. Kraken warm-up uses
+four requests per symbol at two requests per second; 200 symbols take roughly seven minutes plus overhead.
 
 ### Configuration (`appsettings.json` → `MarketData`)
 
@@ -187,9 +221,11 @@ not used by the product.
 - **No authentication or per-user state yet.** Every endpoint is open; run the API on a private network. Alerts, the
   paper account and the watchlist are single-tenant (the watchlist lives in the browser). The `users` / `watchlists`
   tables from the architecture document are not created.
-- **Live exchange connectivity was not exercised in the environment this was built in** (outbound access to
-  exchanges was blocked). The Coinbase adapter is tested against the documented protocol and an in-process
-  WebSocket server; run it against the real feed and watch `/api/system/feed` and `/api/system/metrics`.
+- **Live smoke tests are bounded checks, not operational guarantees.** On September 8, 2026, Kraken catalog,
+  trade/BBO sockets, REST warm-up and API/UI streaming were exercised with 47 selected USD pairs:
+  47 histories loaded, no warm-up failures or engine exceptions. No execution-qualified entry was observed
+  in that short window. This verifies connectivity, not strategy profitability or future signal frequency.
+- **Detected trade gaps are surfaced as degraded feeds; automatic REST gap repair is not implemented.**
 - **The universe is selected once at startup**; symbols that become liquid later are picked up on restart.
 - **BTC dominance** needs an aggregator source and is shown as n/a.
 - **Scoring weights are untuned defaults.** The performance and backtest views exist to measure them; treat every
@@ -200,8 +236,8 @@ not used by the product.
 
 ## Tests
 
-`dotnet test` runs 193 tests (5 need Postgres, see above) covering bucketing, candle construction, aggregation, series storage, universe selection,
-the Coinbase protocol parser (against documented message shapes), the REST client (stubbed HTTP), the provider's
+`dotnet test` runs 243 tests (5 need Postgres, see above) covering bucketing, candle construction, aggregation, series storage, universe selection,
+the Kraken and Coinbase protocol parsers (against documented message shapes), REST clients (stubbed HTTP), the providers'
 reconnect/resubscribe/gap logic (scripted sockets), a real in-process WebSocket server drop-and-reconnect scenario,
 the engine loop, and the API host with a fake provider (REST, health, SignalR).
 

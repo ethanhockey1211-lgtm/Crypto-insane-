@@ -78,8 +78,13 @@ public sealed class ScannerService : BackgroundService, IScannerReader
             inputs.Add(new ScanInput(symbol, snap, snap.Project(price, now), quote, vol24, _signals.GetBreakouts(symbol), _info.IsHistoryLoaded(symbol)));
         }
 
-        var market = MarketContextBuilder.Build(inputs.Select(i => i.Projection).ToList(), now);
-        var btcReturns = inputs.FirstOrDefault(i => i.Symbol == MarketContextBuilder.Btc)?.Snapshot.Momentum?.RecentReturns;
+        // Keep every symbol in the rankings for diagnosis, but never let a stale or
+        // uninitialized benchmark authorize entries in the rest of the universe.
+        var contextInputs = inputs.Where(i => i.HistoryLoaded
+            && now - i.Quote.ExchangeTime <= _o.StaleQuoteThreshold
+            && now - i.Quote.ExchangeTime >= TimeSpan.FromSeconds(-2)).ToList();
+        var market = MarketContextBuilder.Build(contextInputs.Select(i => i.Projection).ToList(), now);
+        var btcReturns = contextInputs.FirstOrDefault(i => i.Symbol == MarketContextBuilder.Btc)?.Snapshot.Momentum?.RecentReturns;
         var previous = Latest;
         var list = new List<Opportunity>(inputs.Count);
         foreach (var input in inputs)

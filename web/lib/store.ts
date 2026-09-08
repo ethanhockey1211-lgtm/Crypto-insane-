@@ -161,6 +161,7 @@ function rowChanged(a: ScannerRow, b: ScannerRow): boolean {
     a.entryState !== b.entryState || a.chaseCeiling !== b.chaseCeiling || a.executionStatus !== b.executionStatus ||
     a.netRewardRatio !== b.netRewardRatio || a.volume24h !== b.volume24h || a.trend !== b.trend ||
     a.executionReason !== b.executionReason || a.assessedPrice !== b.assessedPrice ||
+    a.entryLow !== b.entryLow || a.entryHigh !== b.entryHigh || a.trigger !== b.trigger || a.setupBias !== b.setupBias ||
     !sameStrings(a.executionReasons, b.executionReasons) ||
     a.components.length !== b.components.length || a.components.some((v, i) => v !== b.components[i]);
 }

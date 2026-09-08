@@ -24,7 +24,9 @@ public static class SetupClassifier
         var bias = Bias(m5, m15, s15, p.Vwap);
         var bullishBar = m5 is { Open: { } o } && m5.Close > o;
         var evidence = new List<string>();
-        var up = breakouts?.BestUp;
+        // BestUp is ranked by tracker state and distance, not by this classifier's age
+        // limits. An expired held retest must not hide a fresh break at another level.
+        var up = ActiveBreakout(breakouts, price) ?? breakouts?.BestUp;
 
         // 1. Breakout + retest held
         if (up is { State: BreakoutState.RetestHeld, BarsSinceBreakout: <= 12 })
@@ -113,6 +115,18 @@ public static class SetupClassifier
         else if (up is { State: BreakoutState.Approaching }) evidence.Add(up.Narrative);
         else if (up is { State: BreakoutState.Failed }) evidence.Add(up.Narrative);
         return new SetupClassification(SetupType.None, Confidence.Low, bias, evidence, up, up?.Level.Price);
+    }
+
+    private static BreakoutStatus? ActiveBreakout(BreakoutAnalysis? breakouts, double price)
+    {
+        if (breakouts is null) return null;
+        return breakouts.Levels
+            .Where(b => b.Direction == BreakoutDirection.Up
+                && (b is { State: BreakoutState.RetestHeld, BarsSinceBreakout: >= 0 and <= 12 }
+                    || b is { State: BreakoutState.Confirmed, BarsSinceBreakout: >= 0 and <= 4 }))
+            .OrderBy(b => b.State == BreakoutState.RetestHeld ? 0 : 1)
+            .ThenBy(b => Math.Abs(price - b.Level.Price))
+            .FirstOrDefault();
     }
 
     private static SetupClassification Done(SetupType type, List<string> evidence, BreakoutStatus? breakout, double? keyLevel, TrendBias bias, MarketContext market, IndicatorValues? m5, AnalyticsProjection p, int extra)

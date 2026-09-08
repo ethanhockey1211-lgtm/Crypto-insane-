@@ -43,6 +43,32 @@ public class ExecutionAssessmentTests
         Assert.Null(result.BreakEvenWinRate);
     }
 
+    [Fact]
+    public void Zero_fee_assumption_keeps_spread_and_slippage_costs_and_reports_them()
+    {
+        var result = ExecutionAssessor.Assess(Opportunity(), Market(), new() { FeeBps = 0, SlippageBps = 5 });
+
+        Assert.Equal(0, result.FeeBps);
+        Assert.Equal(5, result.SlippageBps);
+        Assert.Equal(100 * 7.0 / 10_000, result.EntryCostPerUnit!.Value, 9);
+        Assert.True(result.NetRewardRatio < 3); // The gross target is 3R; a waiver does not remove execution costs.
+    }
+
+    [Fact]
+    public void Blocked_results_still_expose_valid_cost_assumptions()
+    {
+        var result = ExecutionAssessor.Assess(Opportunity() with { Plan = null }, Market(),
+            new() { FeeBps = 0, SlippageBps = 5 });
+
+        Assert.Equal("Blocked", result.Status);
+        Assert.Equal(0, result.FeeBps);
+        Assert.Equal(5, result.SlippageBps);
+        Assert.Null(result.NetRewardRatio);
+        var invalid = ExecutionAssessor.Assess(Opportunity(), Market(), new() { FeeBps = double.NaN });
+        Assert.Equal("Blocked", invalid.Status);
+        Assert.Null(invalid.FeeBps); // Never publish NaN into the JSON payload.
+    }
+
     [Theory]
     [InlineData("stale")]
     [InlineData("history")]

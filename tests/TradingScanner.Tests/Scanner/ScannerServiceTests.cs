@@ -20,13 +20,14 @@ public class ScannerServiceTests
         public Dictionary<Symbol, AnalyticsSnapshot> Analytics { get; } = new();
         public Dictionary<Symbol, BreakoutAnalysis> Breakouts { get; } = new();
         public Dictionary<Symbol, PriceQuote> Quotes { get; } = new();
+        public HashSet<Symbol> IncompleteHistory { get; } = new();
         public IReadOnlyCollection<Symbol> Symbols => Quotes.Keys.ToArray();
         public AnalyticsSnapshot? GetSnapshot(Symbol symbol) => Analytics.GetValueOrDefault(symbol);
         public AnalyticsProjection? Project(Symbol symbol, double price, DateTimeOffset now) => Analytics.GetValueOrDefault(symbol)?.Project(price, now);
         public BreakoutAnalysis? GetBreakouts(Symbol symbol) => Breakouts.GetValueOrDefault(symbol);
         public PriceQuote? GetQuote(Symbol symbol) => Quotes.GetValueOrDefault(symbol);
         public MarketStats? GetStats(Symbol symbol) => new(1, 2, 0.5m, 20_000_000m, T.Base);
-        public bool IsHistoryLoaded(Symbol symbol) => true;
+        public bool IsHistoryLoaded(Symbol symbol) => !IncompleteHistory.Contains(symbol);
     }
 
     private static AnalyticsSnapshot Snap(Symbol symbol, double price, double relVol = 1.5, double r5 = 0.005, EmaAlignment align = EmaAlignment.Bullish, params PriceLevel[] levels)
@@ -116,6 +117,28 @@ public class ScannerServiceTests
         Assert.Contains(tape, e => e.Kind == TapeEventKind.BreakoutConfirmed && e.Symbol == "XRP-USD");
         Assert.Contains(tape, e => e.Kind == TapeEventKind.SetupAppeared && e.Text.Contains("Breakout setup"));
         Assert.DoesNotContain(tape, e => e.Kind == TapeEventKind.RegimeChange);
+    }
+
+    [Theory]
+    [InlineData(-31, true)]
+    [InlineData(5, true)]
+    [InlineData(1, false)]
+    public void Unready_btc_cannot_supply_a_tradable_market_context(int quoteOffsetSeconds, bool historyLoaded)
+    {
+        var stub = new Stub();
+        var btc = MarketContextBuilder.Btc;
+        stub.Quotes[btc] = Quote(btc, 60000, T.Base.AddSeconds(quoteOffsetSeconds));
+        stub.Analytics[btc] = Snap(btc, 60000);
+        if (!historyLoaded) stub.IncompleteHistory.Add(btc);
+        stub.Quotes[Xrp] = Quote(Xrp, 1.4, T.Base.AddSeconds(1));
+        stub.Analytics[Xrp] = Snap(Xrp, 1.4);
+
+        var snapshot = Service(stub).RunCycle();
+
+        Assert.Equal(2, snapshot.Opportunities.Count); // Both stay visible for diagnosis.
+        Assert.Null(snapshot.Market.Btc);
+        Assert.Equal(1, snapshot.Market.SymbolsEvaluated);
+        Assert.Contains("BTC market context unavailable", snapshot.Get(Xrp)!.Execution!.Reasons);
     }
 
     [Fact]

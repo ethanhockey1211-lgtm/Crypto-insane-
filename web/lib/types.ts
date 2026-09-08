@@ -5,6 +5,10 @@ export interface ScannerRow {
   /** All execution blockers (or the single advisory for a passing setup). */
   executionReasons?: string[] | null;
   assessedPrice?: number | null;
+  entryLow?: number | null;
+  entryHigh?: number | null;
+  trigger?: string | null;
+  setupBias?: "Neutral" | "Bullish" | "Bearish" | null;
   executionStatus?: "Blocked" | "Watch" | null;
   netRewardRatio?: number | null;
   rank: number;
@@ -152,7 +156,7 @@ export interface OpportunityMetrics {
   trend5m: string | null; trend15m: string | null; alignment5m: string | null; alignment15m: string | null;
 }
 export interface Opportunity {
-  execution?: { status: "Blocked" | "Watch"; netRewardRatio: number | null; breakEvenWinRate: number | null; entryCostPerUnit: number | null; netRewardPerUnit: number | null; netRiskPerUnit: number | null; maxEntryPriceAfterCosts: number | null; reasons: string[] };
+  execution?: { status: "Blocked" | "Watch"; netRewardRatio: number | null; breakEvenWinRate: number | null; entryCostPerUnit: number | null; netRewardPerUnit: number | null; netRiskPerUnit: number | null; maxEntryPriceAfterCosts: number | null; reasons: string[]; feeBps?: number | null; slippageBps?: number | null };
   symbol: { value: string };
   at: string; price: number; rank: number; score: number;
   breakdown: ScoreBreakdown; setup: SetupClassification; plan: TradePlan | null; overextension: Overextension;

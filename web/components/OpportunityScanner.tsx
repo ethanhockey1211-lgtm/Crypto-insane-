@@ -82,7 +82,7 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
           <tbody>
             {symbols.map((s) => <OpportunityRow key={s} symbol={s} active={active === s} onOpen={onOpen} />)}
             {symbols.length === 0 && (
-              <tr><td colSpan={15} className="px-3 py-8 text-center text-ink-3">No opportunities yet. The scanner ranks the universe once analytics have warmed up.</td></tr>
+              <tr><td colSpan={15} className="px-3 py-8 text-center text-ink-3">{order.length ? "No pairs match these table filters. Clear the symbol filter or turn off setups only to see the full scan." : "No opportunities yet. The scanner ranks the universe once analytics have warmed up."}</td></tr>
             )}
           </tbody>
         </table>

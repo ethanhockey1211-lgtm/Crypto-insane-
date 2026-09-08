@@ -21,12 +21,22 @@ public sealed record ExecutionAssessment(string Status, double? NetRewardRatio,
     double? NetRiskPerUnit, IReadOnlyList<string> Reasons)
 {
     public double? MaxEntryPriceAfterCosts { get; init; }
+    /// <summary>Configured per-side assumptions, not fees or slippage observed on an order.</summary>
+    public double? FeeBps { get; init; }
+    public double? SlippageBps { get; init; }
 }
 
 /// <summary>Execution feasibility, NOT a prediction or estimated win probability.</summary>
 public static class ExecutionAssessor
 {
-    public static ExecutionAssessment Assess(Opportunity o, MarketContext market, ExecutionConfig cfg)
+    public static ExecutionAssessment Assess(Opportunity o, MarketContext market, ExecutionConfig cfg) =>
+        AssessCore(o, market, cfg) with
+        {
+            FeeBps = double.IsFinite(cfg.FeeBps) && cfg.FeeBps >= 0 ? cfg.FeeBps : null,
+            SlippageBps = double.IsFinite(cfg.SlippageBps) && cfg.SlippageBps >= 0 ? cfg.SlippageBps : null,
+        };
+
+    private static ExecutionAssessment AssessCore(Opportunity o, MarketContext market, ExecutionConfig cfg)
     {
         var reasons = new List<string>();
         var spread = o.Metrics.SpreadBps;
