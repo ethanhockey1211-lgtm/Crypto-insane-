@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRow } from "@/lib/store";
+import { useRow } from "@/lib/display";
 import { loadWatchlist, saveWatchlist } from "@/lib/watchlist";
 import { fmtPct, fmtPrice, fmtX } from "@/lib/format";
 import { hiddenMarkets, useHiddenMarkets } from "@/lib/hidden-markets";

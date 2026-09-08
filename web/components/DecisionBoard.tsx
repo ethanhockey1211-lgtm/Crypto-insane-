@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { store, useCycle, useFeed, useHub, useOrder } from "@/lib/store";
+import { store, useCycle, useOrder, useDisplay } from "@/lib/display";
+import { useFeed, useHub } from "@/lib/store";
 import { decision, decisionSummary, executionBlockers, scannerIsFresh } from "@/lib/decision";
 import { fmtPrice, fmtR, setupLabel } from "@/lib/format";
 import type { ScannerRow } from "@/lib/types";
@@ -48,13 +49,14 @@ function SetupLane({ rows, lane, onOpen }: { rows: ScannerRow[]; lane: Lane; onO
 }
 
 export function DecisionBoard({ onOpen }: { onOpen: (symbol: string) => void }) {
+  const display = useDisplay();
   const order = useOrder();
   const cycle = useCycle();
   const feed = useFeed();
   const hub = useHub();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
-  const live = hub === "connected" && feed?.live === true && scannerIsFresh(cycle.at, now);
+  const live = hub === "connected" && feed?.live === true && scannerIsFresh(cycle.at, display.paused ? display.capturedAt ?? now : now);
   const rows = order.flatMap(symbol => { const row = store.getRow(symbol); return row ? [row] : []; });
   const summary = decisionSummary(rows, live);
   const coverage = feed?.universeSize ? `${rows.length} / ${feed.universeSize} pairs assessed` : `${rows.length} pairs assessed`;
@@ -62,8 +64,9 @@ export function DecisionBoard({ onOpen }: { onOpen: (symbol: string) => void }) 
     <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
       <div><p className="eyebrow text-accent mb-1.5">Execution workspace</p><h2 className="text-[23px] font-semibold tracking-tight">Entry desk</h2>
         <p className="text-[14px] text-ink-2 mt-1">{feed?.exchange ?? "Market"} · USD pairs · {live ? coverage : "Entries paused until market data and scanner updates are fresh."}</p></div>
-      <span className={`text-[14px] rounded px-3 py-1 border ${live ? "border-line-strong text-ink-2" : "border-warn/50 warn"}`}>{live ? "Live scan" : "Data interrupted"}</span>
+      <span className={`text-[14px] rounded px-3 py-1 border ${live && !display.paused ? "border-line-strong text-ink-2" : "border-warn/50 warn"}`}>{!live ? "Data interrupted" : display.paused ? "Paused snapshot" : "Updates every 5s"}</span>
     </div>
+    {display.paused && <p className="mb-4 rounded border border-warn/40 bg-ground p-3 text-[13px] text-warn">Reference snapshot. Entry states and levels below describe the shown time, not the current market. Refresh before considering a setup.</p>}
     {!live ? <div className="rounded border border-line-strong bg-ground p-5" role="status">
       <h3 className="text-[18px]">Wait for fresh data</h3>
       <p className="text-[14px] text-ink-2 mt-2">Previous prices may still be visible in the full market table. Entry candidates resume after the feed reconnects and a fresh scanner cycle arrives.</p>
@@ -73,7 +76,7 @@ export function DecisionBoard({ onOpen }: { onOpen: (symbol: string) => void }) 
         {[["In zone · confirm", summary.ready.length], ["Waiting for price", summary.waiting.length], ["Blocked", summary.blocked.length], ["Unavailable", summary.unavailable.length]].map(([label, count]) => <div key={label} className="rounded border border-line p-2"><p className="text-[12px] text-ink-2">{label}</p><p className="num text-[22px] mt-1">{count}</p></div>)}
       </div>
       {!summary.ready.length && <div className="rounded border border-line-strong bg-ground p-4 mt-4">
-        <h3 className="text-[17px]">{rows.length ? "No eligible entry in the zone right now" : "The scanner is warming up"}</h3>
+        <h3 className="text-[17px]">{rows.length ? display.paused ? "No eligible entry at the shown time" : "No eligible entry in the zone right now" : "The scanner is warming up"}</h3>
         <p className="text-[14px] text-ink-2 mt-2">{summary.waiting.length ? `${summary.waiting.length} plans pass execution checks and are waiting for price. Their zones and triggers are below.` : summary.developing.length ? "The developing plans below show the levels being tracked and every check still blocking entry." : rows.length ? "No current bullish plan passes the entry checks. Review the blockers below or inspect the full market table." : "Plans appear here as price history and analytics become available."}</p>
       </div>}
       <SetupLane rows={summary.ready} lane="ready" onOpen={onOpen} />

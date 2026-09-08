@@ -25,15 +25,16 @@ function Num({ label, value, onChange, step = "any", suffix }: { label: string; 
 export function PositionCalculator({ plan, price, symbol }: { plan: TradePlan | null; price: number; symbol?: string }) {
   const [paperMsg, setPaperMsg] = useState<string | null>(null);
   const [d, setD] = useState<RiskDefaults>(DEFAULTS);
-  const [entry, setEntry] = useState(price);
+  const [entry, setEntry] = useState(plan?.entryMid ?? price);
   const [stop, setStop] = useState(plan?.stop ?? price * 0.98);
   const [t1, setT1] = useState(plan?.target1 ?? price * 1.02);
   const [t2, setT2] = useState(plan?.target2 ?? price * 1.03);
   const [t3, setT3] = useState(plan?.target3 ?? price * 1.05);
   useEffect(() => { setD(loadDefaults()); }, []);
-  useEffect(() => {
-    if (plan) { setEntry(plan.entryMid); setStop(plan.stop); setT1(plan.target1); setT2(plan.target2); setT3(plan.target3); }
-  }, [plan]);
+  // Plan refreshes must not overwrite values while the user is editing a position.
+  const useLatestPlan = () => {
+    if (plan) { setEntry(plan.entryMid); setStop(plan.stop); setT1(plan.target1); setT2(plan.target2); setT3(plan.target3); setPaperMsg(null); }
+  };
   const update = (patch: Partial<RiskDefaults>) => setD((prev) => { const n = { ...prev, ...patch }; try { localStorage.setItem(KEY, JSON.stringify(n)); } catch { /* ignore */ } return n; });
 
   const r = useMemo(() => sizePosition({ ...d, entry, stop, targets: [t1, t2, t3] }), [d, entry, stop, t1, t2, t3]);
@@ -41,6 +42,7 @@ export function PositionCalculator({ plan, price, symbol }: { plan: TradePlan | 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div className="grid grid-cols-2 gap-2">
+        <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 mb-1"><p className="text-[11px] text-ink-3">Inputs stay fixed while market plans update.</p><button type="button" className="text-[11px] text-accent underline underline-offset-2 disabled:opacity-40 disabled:cursor-not-allowed" disabled={!plan} onClick={useLatestPlan}>Use latest plan</button></div>
         <Num label="Account" value={d.accountBalance} onChange={(v) => update({ accountBalance: v })} suffix="$" />
         <Num label="Max position" value={d.maxPositionUsd} onChange={(v) => update({ maxPositionUsd: v })} suffix="$" />
         <Num label="Max risk / trade" value={Math.round(d.maxRiskPct * 10000) / 100} onChange={(v) => update({ maxRiskPct: v / 100 })} suffix="%" step="0.1" />

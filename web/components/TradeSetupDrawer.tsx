@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { useRow, useSymbol, useCycle, useFeed, useHub } from "@/lib/store";
+import { useFeed, useHub } from "@/lib/store";
+import { useDisplay } from "@/lib/display";
 import { scannerIsFresh } from "@/lib/decision";
 import { fmtAge, fmtPct, fmtPrice, fmtVolume, fmtX, setupLabel } from "@/lib/format";
 import type { Explanation, Opportunity } from "@/lib/types";
@@ -26,18 +27,24 @@ function Stat({ k, v, cls }: { k: string; v: React.ReactNode; cls?: string }) {
 }
 
 export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol: string; onClose: () => void; watched: boolean; onWatch: (s: string) => void }) {
-  const row = useRow(symbol);
+  const display = useDisplay();
+  const displayState = useRef({ paused: display.paused, revision: display.revision });
+  displayState.current = { paused: display.paused, revision: display.revision };
+  const row = display.rows.get(symbol) ?? null;
   const visibility = useHiddenMarkets();
   const hidden = visibility.symbols.includes(symbol);
-  const summary = useSymbol(symbol);
-  const cycle = useCycle();
+  const summary = display.symbols.get(symbol) ?? null;
+  const cycle = display.cycle;
   const feed = useFeed();
   const hub = useHub();
-  const [now, setNow] = useState(() => Date.now());
-  const [loadedAt, setLoadedAt] = useState(0);
-  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
-  const [opp, setOpp] = useState<Opportunity | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [, refreshClock] = useState(0);
+  useEffect(() => { const id = setInterval(() => refreshClock(value => value + 1), 1000); return () => clearInterval(id); }, []);
+  const now = Date.now();
+  const [detail, setDetail] = useState<{ symbol: string; value: Opportunity; receivedAt: number } | null>(null);
+  const opp = detail?.symbol === symbol ? detail.value : null;
+  const [failure, setFailure] = useState<{ symbol: string; message: string } | null>(null);
+  const error = failure?.symbol === symbol ? failure.message : null;
+  const pendingDetail = useRef<{ symbol: string; request: Promise<Opportunity> } | null>(null);
   const [priority, setPriority] = useState(false);
   const [ai, setAi] = useState<{ loading: boolean; result: Explanation | null; error: string | null }>({ loading: false, result: null, error: null });
   useEffect(() => { setAi({ loading: false, result: null, error: null }); }, [symbol]);
@@ -49,21 +56,28 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
 
   useEffect(() => {
     let alive = true;
-    setOpp(null); setError(null);
     setPriority(false);
     void api.prepare(symbol).then(result => { if (alive) setPriority(result.prioritized); }).catch(() => { /* normal history queue remains active */ });
-    let loading = false;
-    const load = async () => {
-      if (loading) return;
-      loading = true;
-      try { const o = await api.opportunity(symbol); if (alive) { setOpp(o); setLoadedAt(Date.now()); setError(null); } }
-      catch (e) { if (alive) setError((e as Error).message); }
-      finally { loading = false; }
-    };
-    void load();
-    const id = setInterval(load, 2000);
-    return () => { alive = false; clearInterval(id); };
+    return () => { alive = false; };
   }, [symbol]);
+
+  // One detail fetch on open and each display capture. Pausing the display also holds this plan.
+  useEffect(() => {
+    let alive = true;
+    const requestedRevision = display.revision;
+    const requestedWhilePaused = displayState.current.paused;
+    const canPublish = () => alive && displayState.current.revision === requestedRevision &&
+      (!displayState.current.paused || requestedWhilePaused);
+    const pending = pendingDetail.current?.symbol === symbol ? pendingDetail.current
+      : { symbol, request: api.opportunity(symbol) };
+    pendingDetail.current = pending;
+    void pending.request.then(value => {
+      if (canPublish()) { setDetail({ symbol, value, receivedAt: Date.now() }); setFailure(null); }
+    }).catch((e: unknown) => {
+      if (canPublish()) setFailure({ symbol, message: e instanceof Error ? e.message : String(e) });
+    }).finally(() => { if (pendingDetail.current === pending) pendingDetail.current = null; });
+    return () => { alive = false; };
+  }, [symbol, display.revision]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -74,7 +88,8 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
   const price = row?.price ?? summary?.quote?.price ?? opp?.price;
   const plan = opp?.plan ?? null;
   const m = opp?.metrics;
-  const current = !error && now - loadedAt <= 10000 && hub === "connected" && feed?.live === true && scannerIsFresh(cycle.at, now) && !opp?.quality.stale;
+  const current = !display.paused && !error && opp != null && detail != null && now - detail.receivedAt <= 10000 &&
+    hub === "connected" && feed?.live === true && scannerIsFresh(cycle.at, now) && scannerIsFresh(opp.at, now) && !opp.quality.stale;
   const scoreClass = (opp?.score ?? 0) >= 80 ? "text-ink" : (opp?.score ?? 0) >= 60 ? "text-ink-2" : "text-ink-3";
 
   return (
@@ -94,6 +109,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
         <button onClick={onClose} className="text-ink-3 hover:text-ink text-[18px] px-2 py-0.5 -mr-1" aria-label="Close setup">×</button>
       </div>
       <div className="overflow-auto min-h-0 flex-1">
+        {display.paused && <p role="status" className="px-4 py-3 text-[12px] text-warn border-b border-line bg-warn/5">Reading paused — prices and plans are held for reference. Refresh now to inspect a new snapshot, or resume display updates. Entry alerts continue using live data.</p>}
         {hidden && <p className="px-4 py-2 text-[12px] text-ink-2 border-b border-line">Hidden from market discovery and browser alerts. Existing paper positions and historical records remain available.</p>}
         <div className="h-[240px] sm:h-[300px] border-b border-line">
           <PriceChart symbol={symbol} levels={{ plan, keyLevel: opp?.setup.keyLevel ?? null, vwap: m?.vwap ?? null }} />
@@ -103,9 +119,10 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
         {opp && (
           <>
             <Section title="Execution quality · not a price prediction">
-              {!current ? <p role="status" className="text-[14px] warn">DATA INTERRUPTED — the plan below is for reference only. Wait for fresh updates before considering an entry.</p> : opp.execution ? <>
+              {!current && <p role="status" className="text-[14px] warn">{display.paused ? "READING SNAPSHOT — this plan is for reference only while display updates are paused." : "DATA INTERRUPTED — the plan below is for reference only. Wait for fresh updates before considering an entry."}</p>}
+              {(current || display.paused) && opp.execution ? <>
                 <p className={`text-[13px] ${opp.execution.status === "Blocked" ? "warn" : "text-ink-2"}`}>
-                  {opp.execution.status === "Blocked" ? "NO TRADE — execution checks failed" : "WATCH — confirm the trigger"}
+                  {display.paused ? "At the shown assessment: " : ""}{opp.execution.status === "Blocked" ? "NO TRADE — execution checks failed" : "WATCH — confirm the trigger"}
                 </p>
                 <div className="grid grid-cols-2 gap-3 my-2">
                   <Stat k="Net R:R to T1 at assessed price" v={opp.execution.netRewardRatio == null ? "—" : `${opp.execution.netRewardRatio.toFixed(2)}R`} />
@@ -214,7 +231,7 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
               <p className="text-[10.5px] text-ink-3 mt-2">Scoring config v{opp.breakdown.configVersion}. Scores rank evidence; they are not probabilities and nothing here is guaranteed.</p>
             </Section>
             <Section title="Position">
-              <PositionCalculator plan={plan} price={price ?? opp.price} symbol={symbol} />
+              <PositionCalculator key={symbol} plan={plan} price={price ?? opp.price} symbol={symbol} />
             </Section>
           </>
         )}

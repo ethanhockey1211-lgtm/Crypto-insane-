@@ -126,9 +126,3 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
-
-.flash { animation: flash 700ms ease-out; }
-@keyframes flash {
-  from { background: var(--color-navy-3); }
-  to { background: transparent; }
-}

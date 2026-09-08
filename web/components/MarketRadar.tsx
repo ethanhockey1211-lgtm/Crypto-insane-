@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
-import { store, useAllOrder, useCycle, useFeed, useHub } from "@/lib/store";
+import { store, useAllOrder, useCycle, useDisplay } from "@/lib/display";
+import { useFeed, useHub } from "@/lib/store";
 import { fmtPct, fmtPrice, fmtR, fmtX, setupLabel } from "@/lib/format";
 import { buildMarketRadar, type RadarMarket } from "@/lib/radar";
 
@@ -43,6 +44,7 @@ function RadarCard({ title, subtitle, kind, items, empty, accessory, onSelect }:
 }
 
 export function MarketRadar({ onOpen, onFilter }: { onOpen: (symbol: string) => void; onFilter?: (symbol: string) => void }) {
+  const display = useDisplay();
   const order = useAllOrder();
   const feed = useFeed();
   const hub = useHub();
@@ -50,8 +52,8 @@ export function MarketRadar({ onOpen, onFilter }: { onOpen: (symbol: string) => 
   const [window, setWindow] = useState<"5m" | "15m">("5m");
   const [, refreshClock] = useState(0);
   useEffect(() => { const timer = setInterval(() => refreshClock(value => value + 1), 1000); return () => clearInterval(timer); }, []);
-  // Quotes can trigger a render between timer ticks; compare against the actual render time.
-  const now = Date.now();
+  // A held view describes the captured instant, and is explicitly labeled as a reference snapshot.
+  const now = display.paused ? display.capturedAt ?? Date.now() : Date.now();
   const live = hub === "connected" && feed?.live === true;
   const radar = buildMarketRadar({
     symbols: order.flatMap(symbol => { const summary = store.getSymbol(symbol); return summary ? [summary] : []; }),
@@ -66,11 +68,11 @@ export function MarketRadar({ onOpen, onFilter }: { onOpen: (symbol: string) => 
 
   return <section className="border-b border-line bg-gradient-to-br from-navy-2/50 via-ground to-ground p-4 sm:p-5" aria-label="Kraken market radar">
     <div className="mb-4 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-      <div><p className="eyebrow mb-1.5 text-accent">Live discovery</p><h2 className="text-[23px] font-semibold tracking-tight">Market radar</h2><p className="mt-1 text-[12px] text-ink-2">Find movement across Kraken. Open a market to inspect its setup and risks.</p></div>
+      <div><p className="eyebrow mb-1.5 text-accent">{display.paused ? "Paused snapshot" : "Market discovery"}</p><h2 className="text-[23px] font-semibold tracking-tight">Market radar</h2><p className="mt-1 text-[12px] text-ink-2">{display.paused ? "Rankings are held for reading. Refresh to inspect current movement." : "Find movement across Kraken. Open a market to inspect its setup and risks."}</p></div>
       <div className="flex flex-wrap items-center gap-4 rounded-lg border border-line bg-navy/70 px-3 py-2.5 text-[10px] text-ink-3">
         <div><span className="num mr-1.5 text-[16px] text-ink">{radar.total}</span>USD pairs</div>
         <span className="h-5 w-px bg-line" aria-hidden="true" />
-        <div><span className={`num mr-1.5 text-[16px] ${live ? "text-accent" : "text-ink-2"}`}>{radar.quoted}</span>fresh quotes</div>
+        <div><span className={`num mr-1.5 text-[16px] ${live ? "text-accent" : "text-ink-2"}`}>{radar.quoted}</span>{display.paused ? "quotes at snapshot" : "fresh quotes"}</div>
         <div><span className="num mr-1.5 text-[16px] text-ink">{radar.assessed}</span>assessed</div>
       </div>
     </div>

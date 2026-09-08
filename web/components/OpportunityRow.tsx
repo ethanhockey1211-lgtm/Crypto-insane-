@@ -1,6 +1,6 @@
 "use client";
-import { memo, useEffect, useRef } from "react";
-import { useRow, useSymbol } from "@/lib/store";
+import { memo } from "react";
+import { useRow, useSymbol } from "@/lib/display";
 import { fmtPct, fmtPrice, fmtR, fmtX, signClass } from "@/lib/format";
 import { ScoreBar } from "./ScoreBar";
 
@@ -14,17 +14,6 @@ const STATE_SHORT: Record<string, string> = {
 
 export const OpportunityRow = memo(function OpportunityRow({ symbol, active, onOpen }: { symbol: string; active: boolean; onOpen: (s: string) => void }) {
   const row = useRow(symbol);
-  const priceRef = useRef<HTMLSpanElement>(null);
-  const lastPrice = useRef<number | null>(null);
-  useEffect(() => {
-    if (!row) return;
-    if (lastPrice.current !== null && lastPrice.current !== row.price && priceRef.current) {
-      priceRef.current.classList.remove("flash");
-      void priceRef.current.offsetWidth;
-      priceRef.current.classList.add("flash");
-    }
-    lastPrice.current = row.price;
-  }, [row]);
   if (!row) return <PendingMarketRow symbol={symbol} onOpen={onOpen} />;
   const state = row.breakout ? STATE_SHORT[row.breakout] ?? row.breakout : "";
   const entry = row.entryState ? ENTRY_TAG[row.entryState] : null;
@@ -57,7 +46,7 @@ export const OpportunityRow = memo(function OpportunityRow({ symbol, active, onO
           : entry ? <span className={`tag ml-1.5 ${entry.cls}`} title={row.chaseCeiling != null ? `Do not chase above ${row.chaseCeiling}` : undefined}>{entry.text}</span> : null}
       </td>
       <td className={`px-2 text-[11px] whitespace-nowrap hidden md:table-cell ${stateClass}`}>{state}</td>
-      <td className="num px-2 text-right"><span ref={priceRef} className="inline-block px-1 -mx-1 rounded-[2px]">{fmtPrice(row.price)}</span></td>
+      <td className="num px-2 text-right"><span className="inline-block px-1 -mx-1">{fmtPrice(row.price)}</span></td>
       <td className="num px-2 text-right text-ink-2 hidden xl:table-cell">{fmtPrice(row.entry)}</td>
       <td className="num px-2 text-right text-down/80 hidden xl:table-cell">{fmtPrice(row.stop)}</td>
       <td className="num px-2 text-right text-up/80 hidden xl:table-cell">{fmtPrice(row.target1)}</td>

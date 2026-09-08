@@ -66,6 +66,11 @@ export class MarketStore {
   bumpPaper(): void { this.paperVersion++; for (const l of this.paperListeners) l(); }
   getCycle = () => this.cycle;
 
+  /** Copy one coherent canonical view, including hidden markets, independently of pending UI notifications. */
+  getDisplaySource = () => ({ rows: new Map(this.rows), symbols: new Map(this.symbols),
+    order: [...this.order], allOrder: [...this.allOrder], tape: [...this.tape],
+    market: this.market, cycle: this.cycle, feed: this.feed });
+
   // ---- mutations ----
   applyScanner(s: ScannerStream): void {
     const nextOrder: string[] = new Array(s.rows.length);
