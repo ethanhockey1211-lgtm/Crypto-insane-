@@ -1,6 +1,6 @@
 "use client";
 import { useSyncExternalStore } from "react";
-import type { AlertEvent, CandleClosed, FeedStatus, MarketContext, QuoteDto, ScannerRow, ScannerStream, TapeEvent } from "./types";
+import type { AlertEvent, CandleClosed, FeedStatus, MarketContext, QuoteDto, ScannerRow, ScannerStream, SymbolSummaryDto, TapeEvent } from "./types";
 
 type Listener = () => void;
 
@@ -9,9 +9,11 @@ type Listener = () => void;
  * to a coarse "list" version. Bursts of ticks are coalesced into one animation frame so hundreds of
  * updates per second never cause hundreds of renders.
  */
-class MarketStore {
+export class MarketStore {
   private rows = new Map<string, ScannerRow>();
   private order: string[] = [];
+  private symbols = new Map<string, SymbolSummaryDto>();
+  private allOrder: string[] = [];
   private market: MarketContext | null = null;
   private feed: FeedStatus | null = null;
   private hub: "connecting" | "connected" | "reconnecting" | "disconnected" = "connecting";
@@ -38,6 +40,9 @@ class MarketStore {
   // ---- snapshots (stable references between changes) ----
   getRow = (symbol: string) => this.rows.get(symbol) ?? null;
   getOrder = () => this.order;
+  /** Assessed rows first, then catalog pairs awaiting analysis. */
+  getAllOrder = () => this.allOrder;
+  getSymbol = (symbol: string) => this.symbols.get(symbol) ?? null;
   getMarket = () => this.market;
   getFeed = () => this.feed;
   getHub = () => this.hub;
@@ -68,6 +73,7 @@ class MarketStore {
     }
     if (changed || nextOrder.length !== this.order.length || nextOrder.some((s2, i) => s2 !== this.order[i])) {
       this.order = nextOrder;
+      this.refreshAllOrder();
       this.dirtyList = true;
     }
     this.market = s.market;
@@ -76,17 +82,66 @@ class MarketStore {
     this.schedule();
   }
 
+  applySymbols(symbols: SymbolSummaryDto[]): void {
+    const next = new Map<string, SymbolSummaryDto>();
+    for (const summary of symbols) {
+      const previous = this.symbols.get(summary.symbol);
+      // A REST response can arrive after a newer live quote. Do not rewind it.
+      const quote = summary.quote && previous?.quote ? latestQuote(previous.quote, summary.quote) : summary.quote;
+      next.set(summary.symbol, quote === summary.quote ? summary : { ...summary, quote });
+      this.dirtySymbols.add(summary.symbol);
+    }
+    for (const symbol of this.symbols.keys()) if (!next.has(symbol)) this.dirtySymbols.add(symbol);
+    this.symbols = next;
+    this.refreshAllOrder();
+    this.dirtyList = true;
+    this.schedule();
+  }
+
   applyQuotes(quotes: QuoteDto[]): void {
+    let changed = false;
+    let rankedChanged = false;
     for (const q of quotes) {
+      const summary = this.symbols.get(q.symbol);
+      if (summary) {
+        const quote = summary.quote ? latestQuote(summary.quote, q) : q;
+        if (quote !== summary.quote) {
+          this.symbols.set(q.symbol, { ...summary, quote });
+          this.dirtySymbols.add(q.symbol);
+          changed = true;
+        }
+      }
       const row = this.rows.get(q.symbol);
       if (row && (row.price !== q.price || row.stale !== q.stale)) {
         this.rows.set(q.symbol, { ...row, price: q.price, stale: q.stale });
         this.dirtySymbols.add(q.symbol);
-        this.order = [...this.order];
-        this.dirtyList = true;
+        changed = true;
+        rankedChanged = true;
       }
     }
+    if (changed) {
+      if (rankedChanged) this.order = [...this.order];
+      this.allOrder = [...this.allOrder];
+      this.dirtyList = true;
+    }
     this.schedule();
+  }
+
+  /** One shared timer expires quiet quotes, including when both REST and the hub go silent. */
+  expireCatalogQuotes(now = Date.now()): void {
+    let changed = false;
+    for (const [symbol, summary] of this.symbols) {
+      const quote = summary.quote;
+      if (!quote || quote.stale) continue;
+      const age = now - quote.receivedAtMs;
+      // Mirrors the configured default quote lifetime. Future or invalid timestamps are unavailable.
+      if (!Number.isFinite(age) || age < 0 || age > 30_000 || quote.ageMs > 30_000 || !Number.isFinite(quote.price) || quote.price <= 0) {
+        this.symbols.set(symbol, { ...summary, quote: { ...quote, stale: true } });
+        this.dirtySymbols.add(symbol);
+        changed = true;
+      }
+    }
+    if (changed) { this.allOrder = [...this.allOrder]; this.dirtyList = true; this.schedule(); }
   }
 
   setFeed(f: FeedStatus): void { this.feed = f; this.dirtyHeader = true; this.schedule(); }
@@ -151,6 +206,18 @@ class MarketStore {
     if (typeof requestAnimationFrame !== "function") { this.flush(); return; }
     this.frame = requestAnimationFrame(() => { this.frame = null; this.flush(); });
   }
+
+  private refreshAllOrder(): void {
+    const assessed = new Set(this.order);
+    this.allOrder = [...this.order, ...[...this.symbols.keys()].filter(symbol => !assessed.has(symbol)).sort()];
+  }
+}
+
+function latestQuote(previous: QuoteDto, incoming: QuoteDto): QuoteDto {
+  if (incoming.receivedAtMs < previous.receivedAtMs) return previous;
+  if (incoming.receivedAtMs > previous.receivedAtMs) return incoming;
+  // The same quote can age between snapshots without changing price or timestamp.
+  return { ...incoming, ageMs: Math.max(previous.ageMs, incoming.ageMs), stale: previous.stale || incoming.stale };
 }
 
 function rowChanged(a: ScannerRow, b: ScannerRow): boolean {
@@ -175,6 +242,8 @@ export const store = new MarketStore();
 const EMPTY: never[] = [];
 export const useRow = (symbol: string) => useSyncExternalStore((l) => store.subscribeSymbol(symbol, l), () => store.getRow(symbol), () => null);
 export const useOrder = () => useSyncExternalStore(store.subscribeList, store.getOrder, () => EMPTY as string[]);
+export const useAllOrder = () => useSyncExternalStore(store.subscribeList, store.getAllOrder, () => EMPTY as string[]);
+export const useSymbol = (symbol: string) => useSyncExternalStore((l) => store.subscribeSymbol(symbol, l), () => store.getSymbol(symbol), () => null);
 export const useMarket = () => useSyncExternalStore(store.subscribeHeader, store.getMarket, () => null);
 export const useFeed = () => useSyncExternalStore(store.subscribeHeader, store.getFeed, () => null);
 export const useHub = () => useSyncExternalStore(store.subscribeHeader, store.getHub, () => "connecting" as const);

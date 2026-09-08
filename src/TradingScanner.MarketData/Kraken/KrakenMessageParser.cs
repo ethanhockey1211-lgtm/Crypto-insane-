@@ -19,7 +19,9 @@ public static class KrakenMessageParser
         if (KrakenRestClient.Text(root, "method") == "subscribe")
         {
             if (!root.GetProperty("success").GetBoolean())
-                return new(null, null, null, true, KrakenRestClient.Text(root, "error") ?? "Subscription rejected", [], []);
+                // Kraken identifies a rejected pair at the top level, outside result.
+                return new(null, null, KrakenRestClient.Text(root, "symbol"), true,
+                    KrakenRestClient.Text(root, "error") ?? "Subscription rejected", [], []);
             var result = root.GetProperty("result");
             return new(KrakenRestClient.Text(result, "channel"), null, KrakenRestClient.Text(result, "symbol"), true, null, [], []);
         }
@@ -56,6 +58,10 @@ public static class KrakenMessageParser
                 var last = KrakenRestClient.Decimal(data.GetProperty("last"));
                 var bid = KrakenRestClient.Decimal(data.GetProperty("bid"));
                 var ask = KrakenRestClient.Decimal(data.GetProperty("ask"));
+                // Quiet/new listings can have no recent trade or an empty book side. Kraken only
+                // guarantees last when traded within 24h. Keep their catalog rows, but do not
+                // invent a price or reconnect every other market sharing this socket.
+                if (last == 0m || bid == 0m || ask == 0m) continue;
                 // The documented rolling 24h absolute change is named change; older v2 deployments use price_change.
                 var change = data.TryGetProperty("change", out var field) || data.TryGetProperty("price_change", out field)
                     ? KrakenRestClient.Decimal(field) : 0m;

@@ -70,18 +70,18 @@ public sealed class MarketDataOrchestrator : BackgroundService
             && string.Equals(p.QuoteCurrency, _options.QuoteCurrency, StringComparison.OrdinalIgnoreCase)
             && p.Volume24hQuote is null);
         if (statsUnavailable > 0)
-            _logger.LogWarning("{Count} candidate products had no 24h stats and were excluded from universe ranking", statsUnavailable);
+            _logger.LogWarning("{Count} candidate products have no 24h stats; all-pairs mode: {IncludeAllPairs}", statsUnavailable, _options.IncludeAllPairs);
         _universe.Set(universe, _time.GetUtcNow(), statsUnavailable);
         var symbols = universe.Select(p => p.Symbol).ToArray();
         _engine.RegisterSymbols(symbols);
-        _logger.LogInformation("Universe: {Count} symbols on {Exchange} (top by 24h {Quote} volume; min {Min:N0}). Top 10: {Top}",
-            symbols.Length, _provider.Exchange, _options.QuoteCurrency, _options.MinVolume24hQuote,
+        _logger.LogInformation("Universe: {Count} symbols on {Exchange} ({Quote}; all-pairs mode: {IncludeAllPairs}). Top 10 by volume: {Top}",
+            symbols.Length, _provider.Exchange, _options.QuoteCurrency, _options.IncludeAllPairs,
             string.Join(", ", symbols.Take(10).Select(s => s.Value)));
 
         if (symbols.Length == 0)
         {
-            _universe.Report("Failed", "Empty universe: no online USD products met MarketData:MinVolume24hQuote, or every stats call failed.");
-            _logger.LogError("Empty universe; nothing to stream. Check MarketData:MinVolume24hQuote and QuoteCurrency.");
+            _universe.Report("Failed", $"Empty universe: no online {_options.QuoteCurrency} products matched the configured universe selection.");
+            _logger.LogError("Empty universe; nothing to stream. Check provider availability and MarketData selection settings.");
             return;
         }
 

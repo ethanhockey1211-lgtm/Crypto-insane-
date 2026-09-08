@@ -111,6 +111,8 @@ public sealed class KrakenExchangeProvider : IMarketDataProvider
     {
         var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
         var subscribed = symbols.ToHashSet();
+        var requested = symbols.ToDictionary(KrakenSymbols.ToWebSocket, StringComparer.Ordinal);
+        var unavailable = new HashSet<string>(StringComparer.Ordinal);
         var pending = symbols.SelectMany(s => new[] { "trade:" + KrakenSymbols.ToWebSocket(s), "ticker:" + KrakenSymbols.ToWebSocket(s) }).ToHashSet(StringComparer.Ordinal);
         var started = _time.GetTimestamp();
         using var receiveCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -142,11 +144,31 @@ public sealed class KrakenExchangeProvider : IMarketDataProvider
                 receiveCts.CancelAfter(Timeout.InfiniteTimeSpan);
                 _metrics.WsMessage(length);
                 var message = KrakenMessageParser.Parse(buffer.AsMemory(0, length), _time.GetUtcNow());
-                if (message.Error is { } error) throw new InvalidOperationException("Kraken feed: " + error);
+                if (message.Error is { } error)
+                {
+                    if (message.Subscription && message.AcknowledgedSymbol is { } rejected && requested.TryGetValue(rejected, out var symbol))
+                    {
+                        // The REST catalog can lead WebSocket availability for a new listing.
+                        // A rejected pair must not repeatedly disconnect the other pairs in its shard.
+                        pending.Remove("trade:" + rejected);
+                        pending.Remove("ticker:" + rejected);
+                        subscribed.Remove(symbol);
+                        if (unavailable.Add(rejected))
+                        {
+                            _metrics.WsError();
+                            _logger.LogWarning("Kraken live data unavailable for {Symbol}: {Error}", rejected, error);
+                            await SetStatusAsync(index, FeedStatus.Degraded,
+                                "live data unavailable: " + string.Join(", ", unavailable.Order()), output, ct).ConfigureAwait(false);
+                        }
+                        continue;
+                    }
+                    throw new InvalidOperationException("Kraken feed: " + error);
+                }
                 if (message.Subscription)
                 {
                     if (pending.Remove(message.Channel + ":" + message.AcknowledgedSymbol) && pending.Count == 0)
-                        await SetStatusAsync(index, FeedStatus.Connected, null, output, ct).ConfigureAwait(false);
+                        await SetStatusAsync(index, unavailable.Count == 0 ? FeedStatus.Connected : FeedStatus.Degraded,
+                            unavailable.Count == 0 ? null : "live data unavailable: " + string.Join(", ", unavailable.Order()), output, ct).ConfigureAwait(false);
                     continue;
                 }
                 foreach (var ticker in message.Tickers)

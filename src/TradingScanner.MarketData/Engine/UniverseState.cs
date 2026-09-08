@@ -14,7 +14,7 @@ public sealed class UniverseState
     public string Phase { get; private set; } = "Starting";
     public string? LastError { get; private set; }
     public int Attempts { get; private set; }
-    /// <summary>Candidate products whose 24h stats could not be fetched and were therefore excluded from ranking.</summary>
+    /// <summary>Candidate products whose 24h stats could not be fetched. All-pairs mode still includes them.</summary>
     public int StatsUnavailable { get; private set; }
     public WarmUpResult WarmUp { get; private set; } = WarmUpResult.Empty;
 

@@ -149,6 +149,65 @@ public class KrakenProviderTests
     }
 
     [Fact]
+    public async Task Pair_specific_rejections_keep_other_pairs_live_and_report_the_unavailable_symbol()
+    {
+        // Real Kraken response shape: a rejected REST-online listing has symbol outside result.
+        const string rejected = """{"method":"subscribe","success":false,"symbol":"AIBTC/USD","error":"Currency pair not supported AIBTC/USD"}""";
+        var socket = new ScriptedWebSocket([
+            new SendStep(rejected), new SendStep(KrakenTestSupport.Ack("trade")),
+            new SendStep(rejected), new SendStep(KrakenTestSupport.Ack("ticker")),
+            new SendStep(KrakenTestSupport.Ticker), new SendStep(KrakenTestSupport.Trade(1)),
+        ]);
+        var factory = new ScriptedSocketFactory(socket);
+        var metrics = new MarketDataMetrics();
+        var provider = KrakenTestSupport.Provider(factory, metrics: metrics);
+        var channel = Channel.CreateUnbounded<MarketEvent>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var run = provider.RunAsync([new("BTC-USD"), new("AIBTC-USD")], channel.Writer, cts.Token);
+        try
+        {
+            var events = await T.CollectAsync(channel.Reader, e => e.Any(x => x.Kind == MarketEventKind.Trade));
+            Assert.Single(factory.Created);
+            Assert.Single(events, e => e.Kind == MarketEventKind.Ticker);
+            Assert.Contains(events, e => e.Status?.Status == FeedStatus.Degraded && e.Status.Reason!.Contains("AIBTC/USD"));
+            Assert.DoesNotContain(events, e => e.Status?.Status == FeedStatus.Connected);
+            Assert.Equal(FeedStatus.Degraded, provider.Status);
+            Assert.Equal(0, metrics.Snapshot().WsReconnects);
+            Assert.Equal(1, metrics.Snapshot().WsErrors);
+        }
+        finally { cts.Cancel(); await run; }
+    }
+
+    [Theory]
+    [InlineData("\"last\":50000", "\"last\":0")]
+    [InlineData("\"bid\":49990", "\"bid\":0")]
+    [InlineData("\"ask\":50010", "\"ask\":0")]
+    public async Task A_pair_without_a_recent_trade_or_book_side_does_not_disconnect_the_shard(string field, string empty)
+    {
+        var socket = new ScriptedWebSocket([
+            new SendStep(KrakenTestSupport.Ack("trade")), new SendStep(KrakenTestSupport.Ack("ticker")),
+            new SendStep(KrakenTestSupport.Ticker.Replace(field, empty)),
+            new SendStep(KrakenTestSupport.Ticker), new SendStep(KrakenTestSupport.Trade(1)),
+        ]);
+        var factory = new ScriptedSocketFactory(socket);
+        var metrics = new MarketDataMetrics();
+        var provider = KrakenTestSupport.Provider(factory, metrics: metrics);
+        var channel = Channel.CreateUnbounded<MarketEvent>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var run = provider.RunAsync(Symbols, channel.Writer, cts.Token);
+        try
+        {
+            var events = await T.CollectAsync(channel.Reader, e => e.Any(x => x.Kind == MarketEventKind.Trade));
+            Assert.Single(factory.Created);
+            Assert.Equal(50000m, Assert.Single(events, e => e.Kind == MarketEventKind.Ticker).Ticker.LastPrice);
+            Assert.Equal(FeedStatus.Connected, provider.Status);
+            Assert.Equal(0, metrics.Snapshot().WsErrors);
+            Assert.Equal(0, metrics.Snapshot().WsReconnects);
+        }
+        finally { cts.Cancel(); await run; }
+    }
+
+    [Fact]
     public void Parser_preserves_Dogecoin_taker_side_and_rejects_invalid_prices()
     {
         var message = KrakenMessageParser.Parse(Encoding.UTF8.GetBytes(KrakenTestSupport.Trade(1, symbol: "DOGE/USD", side: "buy")), T.Base);

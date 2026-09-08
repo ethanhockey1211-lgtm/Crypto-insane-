@@ -12,6 +12,10 @@ public sealed class MarketDataOptions
     /// <summary>Quote currency that defines the tradable universe.</summary>
     public string QuoteCurrency { get; set; } = "USD";
 
+    /// <summary>List every online pair in the quote currency, including stablecoins and pairs without volume statistics.
+    /// Bypasses UniverseSize, MinVolume24hQuote and ExcludedBases; execution checks still apply separately.</summary>
+    public bool IncludeAllPairs { get; set; }
+
     /// <summary>Universe size after ranking by 24h quote volume.</summary>
     public int UniverseSize { get; set; } = 200;
 
