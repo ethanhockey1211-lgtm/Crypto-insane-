@@ -23,11 +23,11 @@ function SetupLane({ rows, lane, onOpen }: { rows: ScannerRow[]; lane: Lane; onO
       {visible.map(row => {
         const d = decision(row, true);
         const hasZone = row.entryLow != null && row.entryHigh != null && Number.isFinite(row.entryLow) && Number.isFinite(row.entryHigh);
-        return <article key={row.symbol} className={`rounded border border-line-strong border-t-2 ${blocked ? "border-t-warn/60" : lane === "ready" ? "border-t-accent" : "border-t-line-strong"} bg-ground p-4 min-w-0`}>
+        return <article key={row.symbol} className={`rounded-xl border border-line-strong border-t-2 ${blocked ? "border-t-warn/60" : lane === "ready" ? "border-t-up shadow-[0_0_24px_rgba(46,210,124,0.05)]" : "border-t-accent/50"} bg-ground p-4 min-w-0`}>
           <div className="flex justify-between gap-2 items-baseline"><h4 className="text-[20px] font-semibold">{row.symbol.replace("-", "/")}</h4><span className="text-[12px] text-ink-2 whitespace-nowrap">Score {row.score.toFixed(0)}</span></div>
           <p className="text-[12px] text-ink-2 mt-1">{setupLabel(row.setup)} · {row.confidence} confidence</p>
           <p className={`text-[14px] mt-3 font-medium ${blocked ? "warn" : lane === "ready" ? "text-accent" : "text-ink-2"}`}>{blocked ? "Blocked — checks must pass first" : d.label}</p>
-          {!blocked && <p className="text-[13px] text-ink-2 mt-2">{d.reason}</p>}
+          {!blocked && lane === "waiting" && <p className="text-[12px] text-ink-2 mt-2">{d.reason}</p>}
           <dl className="grid grid-cols-2 gap-3 text-[13px] my-4">
             <div className="col-span-2"><dt className="text-ink-2">{hasZone ? "Planned entry zone" : "Planned entry reference"}</dt><dd className="num text-[16px]">{hasZone ? `${fmtPrice(row.entryLow)} – ${fmtPrice(row.entryHigh)}` : fmtPrice(row.entry)}</dd></div>
             <div><dt className="text-ink-2">Assessed price</dt><dd className="num">{fmtPrice(row.assessedPrice)}</dd></div>
@@ -37,7 +37,8 @@ function SetupLane({ rows, lane, onOpen }: { rows: ScannerRow[]; lane: Lane; onO
           </dl>
           {blocked ? <div className="mb-4">
             <p className="text-[12px] text-ink-3 mb-2">What needs to change</p>
-            <ul className="space-y-2 text-[13px] text-ink-2 list-disc pl-4">{executionBlockers(row).map(reason => <li key={reason}>{reason}</li>)}</ul>
+            <p className="text-[12px] text-ink-2">{executionBlockers(row)[0]}</p>
+            {executionBlockers(row).length > 1 && <details className="mt-2 text-[12px] text-ink-2"><summary className="cursor-pointer text-warn">{executionBlockers(row).length - 1} more checks to pass</summary><ul className="mt-2 space-y-2 list-disc pl-4">{executionBlockers(row).slice(1).map(reason => <li key={reason}>{reason}</li>)}</ul></details>}
           </div> : row.trigger && <div className="text-[13px] text-ink-2 border-t border-line pt-3 mb-4"><span className="text-ink font-medium">Required trigger: </span>{row.trigger}</div>}
           <button className="w-full py-2.5 px-3 text-[14px] rounded bg-navy-3 hover:bg-navy-2 focus-visible:outline focus-visible:outline-accent" onClick={() => onOpen(row.symbol)}>{blocked ? "Inspect plan and blockers" : "Inspect entry and trigger"}</button>
         </article>;
@@ -59,7 +60,7 @@ export function DecisionBoard({ onOpen }: { onOpen: (symbol: string) => void }) 
   const coverage = feed?.universeSize ? `${rows.length} / ${feed.universeSize} pairs assessed` : `${rows.length} pairs assessed`;
   return <section className="p-4 sm:p-5 border-b border-line" aria-label="Trading decision shortlist">
     <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-      <div><h2 className="text-[20px] font-semibold">Your next decision</h2>
+      <div><p className="eyebrow text-accent mb-1.5">Execution workspace</p><h2 className="text-[23px] font-semibold tracking-tight">Entry desk</h2>
         <p className="text-[14px] text-ink-2 mt-1">{feed?.exchange ?? "Market"} · USD pairs · {live ? coverage : "Entries paused until market data and scanner updates are fresh."}</p></div>
       <span className={`text-[14px] rounded px-3 py-1 border ${live ? "border-line-strong text-ink-2" : "border-warn/50 warn"}`}>{live ? "Live scan" : "Data interrupted"}</span>
     </div>
@@ -77,7 +78,7 @@ export function DecisionBoard({ onOpen }: { onOpen: (symbol: string) => void }) 
       </div>}
       <SetupLane rows={summary.ready} lane="ready" onOpen={onOpen} />
       <SetupLane rows={summary.waiting} lane="waiting" onOpen={onOpen} />
-      <SetupLane rows={summary.developing} lane="developing" onOpen={onOpen} />
+      {summary.developing.length > 0 && <details className="mt-4 rounded-lg border border-line px-4 py-3"><summary className="cursor-pointer flex flex-wrap items-center justify-between gap-2"><span className="text-[14px] font-medium">Developing setups <span className="num text-ink-3 ml-1">{summary.developing.length}</span></span><span className="text-[12px] text-warn">Checks still blocking entry · expand</span></summary><SetupLane rows={summary.developing} lane="developing" onOpen={onOpen} /></details>}
       {summary.blockers.length > 0 && <details className="mt-4 rounded border border-line p-3">
         <summary className="cursor-pointer text-[14px] text-ink-2">Why {summary.blocked.length} pairs are blocked · all checks</summary>
         <p className="text-[12px] text-ink-3 mt-2">A pair can fail multiple checks. Each count is the number of affected pairs.</p>
@@ -85,7 +86,7 @@ export function DecisionBoard({ onOpen }: { onOpen: (symbol: string) => void }) 
       </details>}
       {summary.unavailable.length > 0 && <p className="text-[13px] text-ink-2 mt-3">{summary.unavailable.length} pairs lack fresh data or a complete execution assessment and are excluded from entry candidates.</p>}
     </>}
-    <p className="text-[12px] text-ink-2 mt-3">Net reward / risk includes configured execution costs at the assessed price. Scores rank evidence, not win probability. No strategy edge has been established by these checks. Paper-test first.</p>
+    <p className="text-[11px] text-ink-3 mt-3">Net R includes configured costs. Scores measure evidence, not win probability. Verify the trigger and paper-test your plan.</p>
     {feed?.provider === "kraken" && <p className="text-[12px] text-ink-2 mt-2">Kraken+ fee waiver assumed within your allowance. App quote spreads can differ from this market feed; verify the final quote. <a className="underline underline-offset-2 hover:text-ink" href="https://support.kraken.com/articles/kraken-faq-subscription-service-overview" target="_blank" rel="noreferrer">Kraken+ terms</a></p>}
   </section>;
 }

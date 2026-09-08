@@ -19,6 +19,10 @@ public sealed class HistoryWarmUp
     private readonly MarketDataOptions _options;
     private readonly TimeProvider _time;
     private readonly ILogger<HistoryWarmUp> _logger;
+    private readonly object _queueGate = new();
+    private readonly LinkedList<Symbol> _pending = new();
+    private readonly Dictionary<Symbol, LinkedListNode<Symbol>> _pendingNodes = new();
+    private bool _running;
 
     public int CandlesPerTimeframe { get; init; } = 300;
 
@@ -31,58 +35,122 @@ public sealed class HistoryWarmUp
         _time = time ?? TimeProvider.System;
     }
 
+    /// <summary>
+    /// Move a pending symbol to the front when a user opens it. Repeated calls never create duplicate work.
+    /// Returns false for symbols that are unknown, already being loaded, finished, or outside an active warm-up.
+    /// </summary>
+    public bool Prioritize(Symbol symbol)
+    {
+        lock (_queueGate)
+        {
+            if (!_running || !_pendingNodes.TryGetValue(symbol, out var node)) return false;
+            _pending.Remove(node);
+            _pending.AddFirst(node);
+            return true;
+        }
+    }
+
     /// <param name="progress">Invoked after every symbol (from worker threads) with the running totals.</param>
     public async Task<WarmUpResult> WarmUpAsync(IReadOnlyCollection<Symbol> symbols, CancellationToken ct, Action<WarmUpResult>? progress = null)
     {
         var timeframes = Preferred.Where(_provider.HistoricalTimeframes.Contains).ToArray();
-        var gate = new SemaphoreSlim(4);
+        var priorities = _options.AlwaysInclude
+            .Select((symbol, index) => (symbol, index))
+            .GroupBy(x => x.symbol, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().index, StringComparer.OrdinalIgnoreCase);
+        // Stable ordering retains the universe's volume rank after the BTC/ETH regime dependencies.
+        var ordered = symbols.Distinct().OrderBy(s => priorities.GetValueOrDefault(s.Value, int.MaxValue)).ToArray();
+        lock (_queueGate)
+        {
+            if (_running) throw new InvalidOperationException("History warm-up is already running.");
+            _running = true;
+            foreach (var symbol in ordered) _pendingNodes[symbol] = _pending.AddLast(symbol);
+        }
         var done = 0;
         var failed = 0;
         string? lastError = null;
-        void Publish(bool complete) => progress?.Invoke(new WarmUpResult(symbols.Count, Volatile.Read(ref done), Volatile.Read(ref failed), Volatile.Read(ref lastError), complete));
-        var tasks = symbols.Select(async symbol =>
+        void Publish(bool complete) => progress?.Invoke(new WarmUpResult(ordered.Length, Volatile.Read(ref done), Volatile.Read(ref failed), Volatile.Read(ref lastError), complete));
+        bool TryTake(out Symbol symbol)
         {
-            await gate.WaitAsync(ct).ConfigureAwait(false);
-            try
+            lock (_queueGate)
             {
-                var loaded = new List<(Timeframe tf, IReadOnlyList<Candle> candles)>();
-                foreach (var tf in timeframes)
+                if (_pending.First is not { } node) { symbol = default; return false; }
+                symbol = node.Value;
+                _pending.RemoveFirst();
+                _pendingNodes.Remove(symbol);
+                return true;
+            }
+        }
+        async Task WorkerAsync()
+        {
+            while (!ct.IsCancellationRequested && TryTake(out var symbol))
+            {
+                try
                 {
-                    var to = _time.GetUtcNow();
-                    var from = to - tf.Duration() * CandlesPerTimeframe;
-                    var candles = await _provider.GetHistoricalCandlesAsync(symbol, tf, from, to, ct).ConfigureAwait(false);
-                    loaded.Add((tf, candles));
+                    var loaded = new Dictionary<Timeframe, IReadOnlyList<Candle>>();
+                    var retry = new List<Timeframe>();
+                    async Task LoadAsync(Timeframe tf)
+                    {
+                        // Align both ends so a mid-bucket startup still requests 300 complete closed buckets.
+                        var to = tf.BucketStart(_time.GetUtcNow());
+                        var from = to - tf.Duration() * CandlesPerTimeframe;
+                        loaded[tf] = await _provider.GetHistoricalCandlesAsync(symbol, tf, from, to, ct).ConfigureAwait(false);
+                    }
+                    foreach (var tf in timeframes)
+                    {
+                        try { await LoadAsync(tf).ConfigureAwait(false); }
+                        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                        {
+                            retry.Add(tf);
+                            _logger.LogWarning(ex, "History warm-up will retry {Symbol} {Timeframe} after its other timeframes", symbol, tf);
+                        }
+                    }
+                    // Keep successes in this worker only. A single failed request no longer discards them or
+                    // skips the remaining granularities; retries still use the provider's shared rate limiter.
+                    foreach (var tf in retry) await LoadAsync(tf).ConfigureAwait(false);
+                    ct.ThrowIfCancellationRequested();
+                    await _engine.PostAsync((engine, closed) =>
+                    {
+                        var state = engine.Get(symbol) ?? throw new InvalidOperationException($"{symbol} is not registered in the market engine.");
+                        foreach (var tf in timeframes) state.ApplyHistory(tf, loaded[tf]);
+                        state.RebuildDerived(closed);
+                        engine.NotifyHistoryApplied(symbol);
+                    }, ct).WaitAsync(ct).ConfigureAwait(false);
+                    var n = Interlocked.Increment(ref done);
+                    if (n % 25 == 0 || n == ordered.Length) _logger.LogInformation("History warm-up {Done}/{Total}", n, ordered.Length);
+                    Publish(false);
                 }
-                await _engine.PostAsync((engine, closed) =>
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex)
                 {
-                    var state = engine.Get(symbol);
-                    if (state is null) return;
-                    foreach (var (tf, candles) in loaded) state.ApplyHistory(tf, candles);
-                    state.RebuildDerived(closed);
-                    engine.NotifyHistoryApplied(symbol);
-                }, ct).ConfigureAwait(false);
-                var n = Interlocked.Increment(ref done);
-                if (n % 25 == 0 || n == symbols.Count) _logger.LogInformation("History warm-up {Done}/{Total}", n, symbols.Count);
-                Publish(false);
+                    Interlocked.Increment(ref failed);
+                    Volatile.Write(ref lastError, $"{symbol.Value}: {ex.GetType().Name}: {ex.Message}");
+                    _logger.LogWarning(ex, "History warm-up failed for {Symbol}", symbol);
+                    Publish(false);
+                }
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
-            catch (Exception ex)
+        }
+        try
+        {
+            Publish(false);
+            // Only four tasks exist, regardless of catalog size. Pending work can be reprioritized without
+            // starting new workers or exceeding the provider's configured REST request budget.
+            await Task.WhenAll(Enumerable.Range(0, Math.Min(4, ordered.Length)).Select(_ => WorkerAsync())).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            _logger.LogInformation("History warm-up complete: {Ok} ok, {Failed} failed", done, failed);
+            var result = new WarmUpResult(ordered.Length, done, failed, lastError, true);
+            progress?.Invoke(result);
+            return result;
+        }
+        finally
+        {
+            lock (_queueGate)
             {
-                Interlocked.Increment(ref failed);
-                Volatile.Write(ref lastError, $"{symbol.Value}: {ex.GetType().Name}: {ex.Message}");
-                _logger.LogWarning(ex, "History warm-up failed for {Symbol}", symbol);
-                Publish(false);
+                _running = false;
+                _pending.Clear();
+                _pendingNodes.Clear();
             }
-            finally
-            {
-                gate.Release();
-            }
-        }).ToArray();
-        await Task.WhenAll(tasks).ConfigureAwait(false);
-        _logger.LogInformation("History warm-up complete: {Ok} ok, {Failed} failed", done, failed);
-        var result = new WarmUpResult(symbols.Count, done, failed, lastError, true);
-        progress?.Invoke(result);
-        return result;
+        }
     }
 }
 

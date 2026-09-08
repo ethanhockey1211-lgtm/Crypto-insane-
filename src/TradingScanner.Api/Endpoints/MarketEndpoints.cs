@@ -38,6 +38,12 @@ public static class MarketEndpoints
             return state is null ? TypedResults.NotFound() : TypedResults.Ok(ToSummary(state, time.GetUtcNow(), options.Value.StaleQuoteThreshold));
         });
 
+        market.MapPost("/{symbol}/prepare", (string symbol, UniverseState universe, HistoryWarmUp warmup, IMarketStateReader reader) =>
+        {
+            if (!TryParseSymbol(symbol, out var sym) || !universe.Symbols.Contains(sym)) return Results.NotFound();
+            return Results.Ok(new { symbol = sym.Value, prioritized = warmup.Prioritize(sym), historyLoaded = reader.Get(sym)?.HistoryLoaded ?? false });
+        });
+
         market.MapGet("/{symbol}/candles", Results<Ok<CandlesResponse>, NotFound, BadRequest<string>> (string symbol, string? tf, int? limit, IMarketStateReader reader) =>
         {
             if (!TryParseSymbol(symbol, out var sym)) return TypedResults.NotFound();

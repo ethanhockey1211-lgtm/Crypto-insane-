@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ground: #07090d;
-  --color-navy: #0b1120;
+  --color-ground: #070b13;
+  --color-navy: #0c1422;
   --color-navy-2: #101a2c;
   --color-navy-3: #16233a;
   --color-line: rgba(148, 163, 184, 0.12);
@@ -13,7 +13,7 @@
   --color-up: #2ed27c;
   --color-down: #f0525a;
   --color-warn: #e8b04c;
-  --color-accent: #7fb4e0;
+  --color-accent: #66c6ed;
   --font-sans: var(--font-plex-sans), "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
@@ -47,6 +47,23 @@ html, body {
   background: var(--color-navy);
   border: 1px solid var(--color-line);
 }
+
+.control-button {
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-ground);
+  border-radius: 6px;
+  padding: 6px 11px;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: background 120ms, border-color 120ms;
+}
+.control-button:hover { background: var(--color-navy-3); }
+.control-button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-ground));
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+  color: var(--color-accent);
+}
+.entry-alerts[open] { max-height: 42vh; overflow-y: auto; }
 
 .eyebrow {
   font-size: 10px;

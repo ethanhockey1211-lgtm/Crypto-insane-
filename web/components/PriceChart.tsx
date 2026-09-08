@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { CandlestickSeries, HistogramSeries, LineStyle, createChart, type IChartApi, type IPriceLine, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import { api } from "@/lib/api";
 import { subscribeCandles, unsubscribeCandles } from "@/lib/connection";
-import { store, useRow } from "@/lib/store";
+import { store, useRow, useSymbol, useHub } from "@/lib/store";
 import type { CandleDto, TradePlan } from "@/lib/types";
 
 const TF_SECONDS: Record<string, number> = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600 };
@@ -24,6 +24,8 @@ export function PriceChart({ symbol, levels }: { symbol: string; levels: ChartLe
   const [tf, setTf] = useState("5m");
   const [status, setStatus] = useState<string>("loading");
   const row = useRow(symbol);
+  const historyLoaded = useSymbol(symbol)?.historyLoaded ?? false;
+  const hub = useHub();
 
   useEffect(() => {
     if (!el.current) return;
@@ -47,6 +49,8 @@ export function PriceChart({ symbol, levels }: { symbol: string; levels: ChartLe
   useEffect(() => {
     let cancelled = false;
     forming.current = null;
+    candles.current?.setData([]);
+    volume.current?.setData([]);
     setStatus("loading");
     (async () => {
       try {
@@ -69,11 +73,11 @@ export function PriceChart({ symbol, levels }: { symbol: string; levels: ChartLe
       forming.current = null;
     });
     return () => { cancelled = true; off(); void unsubscribeCandles(symbol, tf); };
-  }, [symbol, tf]);
+  }, [symbol, tf, historyLoaded, hub]);
 
   // Advance the forming bar from the live price.
   useEffect(() => {
-    if (!row || !candles.current) return;
+    if (!row || row.stale || hub !== "connected" || !candles.current) return;
     const size = TF_SECONDS[tf] ?? 300;
     const now = Math.floor(Date.now() / 1000);
     const bucket = now - (now % size);
@@ -85,7 +89,7 @@ export function PriceChart({ symbol, levels }: { symbol: string; levels: ChartLe
       forming.current = { ...f, h: Math.max(f.h, p), l: Math.min(f.l, p), c: p };
     }
     candles.current.update(toBar(forming.current));
-  }, [row, tf]);
+  }, [row, tf, hub]);
 
   // Plan levels as price lines.
   useEffect(() => {

@@ -1,9 +1,11 @@
 "use client";
 import { useMemo, useState } from "react";
-import { store, useAllOrder } from "@/lib/store";
+import { store, useAllOrder, useCycle, useFeed, useHub } from "@/lib/store";
 import { SETUP_ORDER } from "@/lib/format";
+import { decision, scannerIsFresh } from "@/lib/decision";
 import { OpportunityRow } from "./OpportunityRow";
 import { DecisionBoard } from "./DecisionBoard";
+import { MarketRadar } from "./MarketRadar";
 
 type SortKey = "score" | "momentum" | "volume" | "rr" | "setup" | "volume24h" | "r24h";
 const SORTS: { key: SortKey; label: string }[] = [
@@ -16,12 +18,23 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
   const [sort, setSort] = useState<SortKey>("score");
   const [onlySetups, setOnlySetups] = useState(false);
   const [query, setQuery] = useState("");
+  const [focus, setFocus] = useState("all");
+  const cycle = useCycle(); const feed = useFeed(); const hub = useHub();
+  const live = hub === "connected" && feed?.live === true && scannerIsFresh(cycle.at, Date.now());
 
   // Sorting reads the store directly: the list re-renders on list version changes, rows re-render on their own.
   const symbols = useMemo(() => {
     const normalizedQuery = query.trim().toUpperCase().replace("/", "-");
     const filtered = order.filter(symbol => {
       const row = store.getRow(symbol);
+      if (focus !== "all") {
+        if (!row || !live || row.stale) return false;
+        const state = decision(row, live).state;
+        if (focus === "zone" && state !== "watch") return false;
+        if (focus === "waiting" && state !== "wait") return false;
+        if (focus === "volume" && !(row.relVol != null && row.relVol >= 1.5)) return false;
+        if (focus === "movers" && !(row.r5m != null && row.r5m > 0)) return false;
+      }
       return (!onlySetups || (row && row.setup !== "None")) && (!normalizedQuery || symbol.includes(normalizedQuery));
     });
     const val = (symbol: string): number => {
@@ -45,21 +58,26 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
     };
     if (sort !== "score") filtered.sort((a, b) => val(b) - val(a) || (store.getRow(b)?.score ?? -Infinity) - (store.getRow(a)?.score ?? -Infinity));
     return filtered;
-  }, [order, sort, onlySetups, query]);
+  }, [order, sort, onlySetups, query, focus, live]);
   const pending = order.filter(symbol => !store.getRow(symbol)).length;
 
   return (
-    <section className="panel min-h-0 h-full overflow-auto">
+    <section className="panel rounded-xl min-h-0 h-full overflow-auto">
+      <MarketRadar onOpen={onOpen} onFilter={onOpen} />
       <DecisionBoard onOpen={onOpen} />
       <details open className="p-1">
       <summary className="cursor-pointer px-3 py-3 text-[14px] text-ink-2">All USD pairs · filters and detailed indicators</summary>
+      <div className="flex flex-wrap gap-2 px-3 pb-3" aria-label="Market quick filters">
+        {[["all", "All coins"], ["zone", "In the zone"], ["waiting", "Waiting for price"], ["volume", "Volume spikes"], ["movers", "5m gainers"]].map(([key, label]) => <button key={key} className="control-button" aria-pressed={focus === key} onClick={() => { setFocus(key); if (key === "volume") setSort("volume"); else if (key === "movers") setSort("momentum"); }}>{label}</button>)}
+      </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 sm:py-0 sm:h-9 border-b border-line">
         <span className="eyebrow">All coins</span>
         <span className="num text-[11px] text-ink-3 whitespace-nowrap">{symbols.length} of {order.length}</span>
         <label className="flex items-center gap-1.5 text-[11px] text-ink-2 ml-2 whitespace-nowrap">
           <input type="checkbox" checked={onlySetups} onChange={(e) => setOnlySetups(e.target.checked)} /> setups only
         </label>
-        <input className="field !w-20 sm:!w-28 text-[11px]" placeholder="filter" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Filter by symbol" />
+        <input className="field !w-32 sm:!w-44 text-[12px]" placeholder="Search any Kraken coin" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Filter by symbol" />
+        {(query || onlySetups || focus !== "all") && <button className="text-[11px] text-accent underline underline-offset-2" onClick={() => { setQuery(""); setOnlySetups(false); setFocus("all"); }}>Reset filters</button>}
         <div className="ml-auto hidden md:flex items-center gap-1 text-[11px]">
           <span className="text-ink-3 mr-1">sort</span>
           {SORTS.map((s) => (
@@ -95,7 +113,7 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
           <tbody>
             {symbols.map((s) => <OpportunityRow key={s} symbol={s} active={active === s} onOpen={onOpen} />)}
             {symbols.length === 0 && (
-              <tr><td colSpan={15} className="px-3 py-8 text-center text-ink-3">{order.length ? "No pairs match these table filters. Clear the symbol filter or turn off setups only to see all coins." : "Loading the exchange's USD pairs. Coins appear here before their analysis is ready."}</td></tr>
+              <tr><td colSpan={15} className="px-3 py-8 text-center text-ink-3">{order.length ? "No pairs match these filters right now. Reset filters to see every coin." : "Loading the exchange's USD pairs. Coins appear here before their analysis is ready."}</td></tr>
             )}
           </tbody>
         </table>

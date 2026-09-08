@@ -117,13 +117,17 @@ public static class TradePlanBuilder
         var risk = entry - stop;
         if (risk <= 0 || !double.IsFinite(risk) || stop <= 0) return null;
 
+        // Price can sit in the lower part of the preferred zone. A wall between the live
+        // price and the zone midpoint still blocks the trade; projecting entry above that
+        // wall must not erase it and manufacture room to an ideal target.
+        var resistanceFloor = Math.Min(entry, price);
         var resistances = new List<double>();
         foreach (var s in new[] { s5, s15 })
-            if (s is not null) foreach (var l in s.Levels) if (double.IsFinite(l.Price) && l.Price > entry) resistances.Add(l.Price);
-        if (s5?.RangeHigh is { } rh && rh > entry) resistances.Add(rh);
+            if (s is not null) foreach (var l in s.Levels) if (double.IsFinite(l.Price) && l.Price > resistanceFloor) resistances.Add(l.Price);
+        if (s5?.RangeHigh is { } rh && rh > resistanceFloor) resistances.Add(rh);
         resistances = resistances.Distinct().OrderBy(x => x).ToList();
 
-        var t1 = Cap(entry + 2.0 * risk, resistances, entry, basis, "T1");
+        var t1 = Cap(entry + 2.0 * risk, resistances, resistanceFloor, basis, "T1");
         var t2 = Cap(Math.Max(t1 + 0.5 * risk, entry + 3.0 * risk), resistances.Where(r => r > t1 + 0.25 * risk).ToList(), t1 + 0.5 * risk, basis, "T2");
         var t3 = setup.Type == SetupType.RangeBreakout && s5 is { RangeHigh: { } h, RangeLow: { } lo } && h > lo
             ? Math.Max(t2 + 0.5 * risk, h + (h - lo))
