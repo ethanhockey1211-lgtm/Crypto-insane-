@@ -8,6 +8,7 @@ using TradingScanner.Core;
 using TradingScanner.Core.Market;
 using TradingScanner.Core.Providers;
 using TradingScanner.MarketData.Engine;
+using TradingScanner.MarketData.Kraken;
 
 namespace TradingScanner.Api.Services;
 
@@ -30,6 +31,7 @@ public sealed class MarketBroadcaster : BackgroundService, IMarketEventObserver
     private readonly Channel<object> _events = Channel.CreateUnbounded<object>(new UnboundedChannelOptions { SingleReader = true });
 
     private readonly PersistenceInfo _persistence;
+    private readonly MarketAccessDto? _marketAccess;
 
     public TimeSpan QuoteFlushInterval { get; init; } = TimeSpan.FromMilliseconds(250);
 
@@ -41,7 +43,8 @@ public sealed class MarketBroadcaster : BackgroundService, IMarketEventObserver
         IOptions<MarketDataOptions> options,
         ILogger<MarketBroadcaster> logger,
         PersistenceInfo? persistence = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        IOptions<KrakenOptions>? kraken = null)
     {
         _persistence = persistence ?? PersistenceInfo.Memory;
         _hub = hub;
@@ -51,6 +54,12 @@ public sealed class MarketBroadcaster : BackgroundService, IMarketEventObserver
         _options = options.Value;
         _logger = logger;
         _time = time ?? TimeProvider.System;
+        if (provider.Name == KrakenExchangeProvider.ProviderName && kraken is not null)
+        {
+            var access = kraken.Value;
+            _marketAccess = new MarketAccessDto(access.CountryCode.Trim().ToUpperInvariant(),
+                access.Region.Trim(), access.TradingVenue.Trim(), access.NormalizedExcludedAssets());
+        }
     }
 
     public void OnQuote(PriceQuote quote) => _pendingQuotes[quote.Symbol] = quote;
@@ -80,7 +89,8 @@ public sealed class MarketBroadcaster : BackgroundService, IMarketEventObserver
             _universe.StatsUnavailable,
             new WarmUpDto(_universe.WarmUp.Total, _universe.WarmUp.Loaded, _universe.WarmUp.Failed, _universe.WarmUp.LastError, _universe.WarmUp.Complete),
             _reader.RecentErrors.Select(e => new EngineErrorDto(e.At, e.Kind, e.Symbol, e.Error, e.Site)).ToList(),
-            _persistence.Kind);
+            _persistence.Kind,
+            _marketAccess);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

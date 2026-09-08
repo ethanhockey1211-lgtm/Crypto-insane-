@@ -1,5 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json.Nodes;
+using TradingScanner.Core;
+using TradingScanner.MarketData.Universe;
 using TradingScanner.Core.Market;
 using TradingScanner.Core.Providers;
 using TradingScanner.MarketData;
@@ -11,6 +14,44 @@ namespace TradingScanner.Tests.Kraken;
 
 public class KrakenRestClientTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task App_exclusions_cannot_be_reintroduced_by_all_pairs_mode_or_history_lookup(bool allPairs)
+    {
+        var catalog = JsonNode.Parse(KrakenTestSupport.Catalog)!;
+        foreach (var asset in new[] { "NPC", "RE", "KAS" })
+        {
+            var pair = catalog["result"]!["XETHZUSD"]!.DeepClone();
+            pair["wsname"] = asset + "/USD";
+            pair["altname"] = asset + "USD";
+            catalog["result"]![asset + "USD"] = pair;
+        }
+        var handler = KrakenTestSupport.Handler().On("/0/public/AssetPairs", catalog.ToJsonString());
+        var options = new KrakenOptions { CountryCode = " us ", ExcludedAssets = [" npc ", "RE", "kas", "xDG", "NPC", ""] };
+        var market = new MarketDataOptions { IncludeAllPairs = allPairs, MinVolume24hQuote = 0 };
+        var rest = KrakenTestSupport.Rest(handler, options, marketOptions: market);
+        var products = await rest.GetProductsAsync(CancellationToken.None);
+        Assert.Equal(["BTC-USD", "ETH-USD"], products.Select(p => p.Symbol.Value).Order());
+        var selected = UniverseSelector.Select(products, market);
+        Assert.DoesNotContain(selected, p => new[] { "NPC", "RE", "KAS", "DOGE" }.Contains(p.BaseCurrency));
+        Assert.Contains("country_code=US", handler.Requests[0].Query);
+        Assert.Equal(["DOGE", "KAS", "NPC", "RE"], options.NormalizedExcludedAssets());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rest.GetCandlesAsync(new Symbol("NPC-USD"),
+            Timeframe.M1, T.Base, T.Base.AddMinutes(1), CancellationToken.None));
+        Assert.DoesNotContain(handler.Requests, request => request.AbsolutePath.EndsWith("/OHLC"));
+    }
+
+    [Fact]
+    public async Task Invalid_country_fails_without_retrying_the_global_catalog()
+    {
+        var handler = new StubHttpHandler().On("/0/public/AssetPairs", """{"error":["EGeneral:Invalid arguments"],"result":{}}""");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => KrakenTestSupport.Rest(handler,
+            new KrakenOptions { CountryCode = "US-MN" }).GetProductsAsync(CancellationToken.None));
+        Assert.Contains("country_code=US-MN", Assert.Single(handler.Requests).Query);
+    }
+
     [Fact]
     public async Task Discovers_only_online_crypto_USD_and_normalizes_legacy_symbols_with_actual_quote_turnover()
     {

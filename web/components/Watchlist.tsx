@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRow } from "@/lib/store";
 import { loadWatchlist, saveWatchlist } from "@/lib/watchlist";
 import { fmtPct, fmtPrice, fmtX } from "@/lib/format";
+import { hiddenMarkets, useHiddenMarkets } from "@/lib/hidden-markets";
 
 function WatchRow({ symbol, onOpen, onRemove }: { symbol: string; onOpen: (s: string) => void; onRemove: (s: string) => void }) {
   const row = useRow(symbol);
@@ -33,6 +34,9 @@ export function useWatchlist(): [string[], (s: string) => void, (s: string) => v
 
 export function Watchlist({ onOpen, list, add, remove }: { onOpen: (s: string) => void; list: string[]; add: (s: string) => void; remove: (s: string) => void }) {
   const [input, setInput] = useState("");
+  const visibility = useHiddenMarkets();
+  const visibleList = list.filter(symbol => !hiddenMarkets.isHidden(symbol));
+  const hiddenCount = list.length - visibleList.length;
   const submit = () => {
     const s = input.trim().toUpperCase();
     if (!s) return;
@@ -43,12 +47,13 @@ export function Watchlist({ onOpen, list, add, remove }: { onOpen: (s: string) =
     <section className="panel flex flex-col min-h-0 h-full">
       <div className="flex items-center gap-3 px-3 h-9 border-b border-line">
         <span className="eyebrow">Watchlist</span>
-        <span className="num text-[11px] text-ink-3">{list.length}</span>
+        <span className="num text-[11px] text-ink-3">{visibleList.length}</span>
         <form className="ml-auto flex gap-1" onSubmit={(e) => { e.preventDefault(); submit(); }}>
           <input className="field !w-28 text-[11px]" placeholder="add symbol" value={input} onChange={(e) => setInput(e.target.value)} aria-label="Add symbol to watchlist" />
           <button type="submit" className="px-2 text-[11px] bg-navy-3 rounded-[3px]">Add</button>
         </form>
       </div>
+      {hiddenCount > 0 && <p className="px-3 py-2 text-[11px] text-ink-2">{hiddenCount} watched {hiddenCount === 1 ? "coin is" : "coins are"} hidden. Restore under Hidden coins in Find setups; your saved watchlist is retained.</p>}
       <div className="overflow-auto min-h-0 flex-1">
         <table className="w-full border-collapse text-[12px]">
           <thead className="sticky top-0 bg-navy">
@@ -59,8 +64,8 @@ export function Watchlist({ onOpen, list, add, remove }: { onOpen: (s: string) =
             </tr>
           </thead>
           <tbody>
-            {list.map((s) => <WatchRow key={s} symbol={s} onOpen={onOpen} onRemove={remove} />)}
-            {list.length === 0 && <tr><td colSpan={10} className="px-3 py-6 text-ink-3">Empty. Add a symbol above or use “Watch” in a setup card. Saved in this browser.</td></tr>}
+            {visibleList.map((s) => <WatchRow key={s} symbol={s} onOpen={onOpen} onRemove={remove} />)}
+            {visibleList.length === 0 && <tr><td colSpan={10} className="px-3 py-6 text-ink-3">{visibility.symbols.length && list.length ? "Your watched coins are hidden. Restore them from Hidden coins in Find setups." : "Empty. Add a symbol above or use “Watch” in a setup card. Saved in this browser."}</td></tr>}
           </tbody>
         </table>
       </div>

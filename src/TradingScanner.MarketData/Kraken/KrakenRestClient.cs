@@ -56,6 +56,7 @@ public sealed class KrakenRestClient
             using var tickers = await GetJsonAsync("0/public/Ticker", ct).ConfigureAwait(false);
             var stats = tickers.RootElement.GetProperty("result");
             var products = new Dictionary<Symbol, ProductInfo>();
+            var excludedAssets = _options.NormalizedExcludedAssets().ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var entry in catalog.RootElement.GetProperty("result").EnumerateObject())
             {
                 var p = entry.Value;
@@ -64,7 +65,8 @@ public sealed class KrakenRestClient
                     Text(p, "wsname") is not { } wsname || entry.Name.Contains('.')) continue;
                 var symbol = KrakenSymbols.FromWebSocket(wsname);
                 var currencies = symbol.Value.Split('-');
-                if (!string.Equals(currencies[1], _marketOptions.QuoteCurrency, StringComparison.OrdinalIgnoreCase) || FiatBases.Contains(currencies[0])) continue;
+                if (!string.Equals(currencies[1], _marketOptions.QuoteCurrency, StringComparison.OrdinalIgnoreCase) ||
+                    FiatBases.Contains(currencies[0]) || excludedAssets.Contains(currencies[0])) continue;
                 decimal? volumeQuote = null, last = null;
                 if (stats.TryGetProperty(entry.Name, out var ticker) ||
                     (Text(p, "altname") is { } alt && stats.TryGetProperty(alt, out ticker)))
@@ -78,7 +80,10 @@ public sealed class KrakenRestClient
                     increment, Precision(p.GetProperty("lot_decimals").GetInt32()), volumeQuote, last);
             }
             Volatile.Write(ref _products, products);
-            _logger.LogInformation("Kraken catalog: {Count} online crypto {Quote} pairs", products.Count, _marketOptions.QuoteCurrency);
+            _logger.LogInformation("Kraken catalog: {Count} online crypto {Quote} pairs; country {Country}; app exclusions {Excluded}",
+                products.Count, _marketOptions.QuoteCurrency,
+                string.IsNullOrWhiteSpace(_options.CountryCode) ? "global" : _options.CountryCode.Trim().ToUpperInvariant(),
+                string.Join(",", excludedAssets));
             return products.Values.ToArray();
         }
         finally { _catalogGate.Release(); }

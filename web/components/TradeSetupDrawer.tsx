@@ -8,6 +8,7 @@ import type { Explanation, Opportunity } from "@/lib/types";
 import { PriceChart } from "./PriceChart";
 import { MomentumPanel } from "./MomentumPanel";
 import { PositionCalculator } from "./PositionCalculator";
+import { hiddenMarkets, useHiddenMarkets } from "@/lib/hidden-markets";
 
 const ENTRY_STATE: Record<string, string> = { Watch: "Watch: below the zone, wait for the trigger", InZone: "In the entry zone", Late: "Late: above the zone, reward shrinking", Chase: "Do not chase: reward to T1 is gone" };
 
@@ -26,6 +27,8 @@ function Stat({ k, v, cls }: { k: string; v: React.ReactNode; cls?: string }) {
 
 export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol: string; onClose: () => void; watched: boolean; onWatch: (s: string) => void }) {
   const row = useRow(symbol);
+  const visibility = useHiddenMarkets();
+  const hidden = visibility.symbols.includes(symbol);
   const summary = useSymbol(symbol);
   const cycle = useCycle();
   const feed = useFeed();
@@ -84,9 +87,14 @@ export function TradeSetupDrawer({ symbol, onClose, watched, onWatch }: { symbol
         {opp?.overextension.doNotChase && <span className="tag tag-warn">do not chase</span>}
         {opp?.quality.stale && <span className="tag text-warn border-warn/40">stale {fmtAge(opp.quality.ageMs)}</span>}
         <button onClick={() => onWatch(symbol)} className="ml-auto text-[11px] px-2 py-0.5 rounded-[3px] bg-navy-3 hover:bg-navy-2">{watched ? "Watching" : "Watch"}</button>
+        <button type="button" className="text-[11px] px-2 py-1 rounded border border-line-strong text-ink-2 hover:text-ink hover:bg-navy-2" aria-label={hidden ? `Restore ${symbol.replace("-", "/")} to scanner` : `Hide ${symbol.replace("-", "/")} as unavailable`} title="Hide a coin you cannot buy in your Kraken account. Restore it from Hidden coins in the scanner." onClick={() => {
+          if (hidden) hiddenMarkets.restore(symbol);
+          else { hiddenMarkets.hide(symbol); onClose(); }
+        }}>{hidden ? "Restore to scanner" : "Hide unavailable"}</button>
         <button onClick={onClose} className="text-ink-3 hover:text-ink text-[18px] px-2 py-0.5 -mr-1" aria-label="Close setup">×</button>
       </div>
       <div className="overflow-auto min-h-0 flex-1">
+        {hidden && <p className="px-4 py-2 text-[12px] text-ink-2 border-b border-line">Hidden from market discovery and browser alerts. Existing paper positions and historical records remain available.</p>}
         <div className="h-[240px] sm:h-[300px] border-b border-line">
           <PriceChart symbol={symbol} levels={{ plan, keyLevel: opp?.setup.keyLevel ?? null, vwap: m?.vwap ?? null }} />
         </div>

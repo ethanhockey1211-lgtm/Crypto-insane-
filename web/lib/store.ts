@@ -1,5 +1,6 @@
 "use client";
 import { useSyncExternalStore } from "react";
+import { HiddenMarkets, hiddenMarkets } from "./hidden-markets";
 import type { AlertEvent, CandleClosed, FeedStatus, MarketContext, QuoteDto, ScannerRow, ScannerStream, SymbolSummaryDto, TapeEvent } from "./types";
 
 type Listener = () => void;
@@ -19,6 +20,10 @@ export class MarketStore {
   private hub: "connecting" | "connected" | "reconnecting" | "disconnected" = "connecting";
   private tape: TapeEvent[] = [];
   private alerts: AlertEvent[] = [];
+  private visibleOrder: string[] = [];
+  private visibleAllOrder: string[] = [];
+  private visibleTape: TapeEvent[] = [];
+  private visibleAlerts: AlertEvent[] = [];
   private cycle: { at: string | null; ms: number } = { at: null, ms: 0 };
 
   private symbolListeners = new Map<string, Set<Listener>>();
@@ -37,17 +42,25 @@ export class MarketStore {
   private dirtyAlerts = false;
   private frame: number | null = null;
 
+  constructor(private visibility = new HiddenMarkets()) {
+    visibility.subscribe(() => {
+      this.dirtyList = true; this.dirtyTape = true; this.dirtyAlerts = true;
+      // Visibility changes must be applied before alert effects re-baseline in this render.
+      this.flush();
+    });
+  }
+
   // ---- snapshots (stable references between changes) ----
   getRow = (symbol: string) => this.rows.get(symbol) ?? null;
-  getOrder = () => this.order;
+  getOrder = () => this.visibleOrder;
   /** Assessed rows first, then catalog pairs awaiting analysis. */
-  getAllOrder = () => this.allOrder;
+  getAllOrder = () => this.visibleAllOrder;
   getSymbol = (symbol: string) => this.symbols.get(symbol) ?? null;
   getMarket = () => this.market;
   getFeed = () => this.feed;
   getHub = () => this.hub;
-  getTape = () => this.tape;
-  getAlerts = () => this.alerts;
+  getTape = () => this.visibleTape;
+  getAlerts = () => this.visibleAlerts;
   getPaperVersion = () => this.paperVersion;
   /** A fill happened server-side; views re-fetch paper state. */
   bumpPaper(): void { this.paperVersion++; for (const l of this.paperListeners) l(); }
@@ -192,6 +205,13 @@ export class MarketStore {
   flush(): void {
     if (this.frame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(this.frame);
     this.frame = null;
+    // Filter discovery snapshots, never the canonical rows, quotes, or event history.
+    if (this.dirtyList) {
+      this.visibleOrder = this.visibility.getSnapshot().symbols.length ? this.order.filter(symbol => !this.visibility.isHidden(symbol)) : this.order;
+      this.visibleAllOrder = this.visibility.getSnapshot().symbols.length ? this.allOrder.filter(symbol => !this.visibility.isHidden(symbol)) : this.allOrder;
+    }
+    if (this.dirtyTape) this.visibleTape = this.tape.filter(event => !this.visibility.isHidden(event.symbol));
+    if (this.dirtyAlerts) this.visibleAlerts = this.alerts.filter(event => !this.visibility.isHidden(event.symbol));
     const symbols = [...this.dirtySymbols];
     this.dirtySymbols.clear();
     for (const s of symbols) { const set = this.symbolListeners.get(s); if (set) for (const l of set) l(); }
@@ -237,7 +257,7 @@ function sameStrings(a: readonly string[] | null | undefined, b: readonly string
   return a === b || (a?.length === b?.length && a?.every((value, i) => value === b?.[i]) === true);
 }
 
-export const store = new MarketStore();
+export const store = new MarketStore(hiddenMarkets);
 
 const EMPTY: never[] = [];
 export const useRow = (symbol: string) => useSyncExternalStore((l) => store.subscribeSymbol(symbol, l), () => store.getRow(symbol), () => null);

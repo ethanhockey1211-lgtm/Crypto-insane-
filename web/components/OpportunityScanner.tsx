@@ -6,6 +6,8 @@ import { decision, scannerIsFresh } from "@/lib/decision";
 import { OpportunityRow } from "./OpportunityRow";
 import { DecisionBoard } from "./DecisionBoard";
 import { MarketRadar } from "./MarketRadar";
+import { HiddenMarketsControl } from "./HiddenMarketsControl";
+import { useHiddenMarkets } from "@/lib/hidden-markets";
 
 type SortKey = "score" | "momentum" | "volume" | "rr" | "setup" | "volume24h" | "r24h";
 const SORTS: { key: SortKey; label: string }[] = [
@@ -15,6 +17,7 @@ const SORTS: { key: SortKey; label: string }[] = [
 
 export function OpportunityScanner({ active, onOpen }: { active: string | null; onOpen: (s: string) => void }) {
   const order = useAllOrder();
+  const visibility = useHiddenMarkets();
   const [sort, setSort] = useState<SortKey>("score");
   const [onlySetups, setOnlySetups] = useState(false);
   const [query, setQuery] = useState("");
@@ -63,6 +66,7 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
 
   return (
     <section className="panel rounded-xl min-h-0 h-full overflow-auto">
+      <HiddenMarketsControl />
       <MarketRadar onOpen={onOpen} onFilter={onOpen} />
       <DecisionBoard onOpen={onOpen} />
       <details open className="p-1">
@@ -113,7 +117,7 @@ export function OpportunityScanner({ active, onOpen }: { active: string | null; 
           <tbody>
             {symbols.map((s) => <OpportunityRow key={s} symbol={s} active={active === s} onOpen={onOpen} />)}
             {symbols.length === 0 && (
-              <tr><td colSpan={15} className="px-3 py-8 text-center text-ink-3">{order.length ? "No pairs match these filters right now. Reset filters to see every coin." : "Loading the exchange's USD pairs. Coins appear here before their analysis is ready."}</td></tr>
+              <tr><td colSpan={15} className="px-3 py-8 text-center text-ink-3">{order.length ? "No visible pairs match these filters. Reset filters or manage Hidden coins above." : visibility.symbols.length ? "No visible markets. Restore coins using Hidden coins above, or wait for the market catalog to load." : "Loading the exchange's USD pairs. Coins appear here before their analysis is ready."}</td></tr>
             )}
           </tbody>
         </table>

@@ -2,10 +2,17 @@
 import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from "@microsoft/signalr";
 import { API_BASE, api } from "./api";
 import { store } from "./store";
+import { hiddenMarkets } from "./hidden-markets";
 import type { AlertEvent, CandleClosed, FeedStatus, QuoteDto, ScannerStream, TapeEvent } from "./types";
 
 let connection: HubConnection | null = null;
 let started = false;
+const shownNotifications = new Map<string, { symbol: string; notification: Notification }>();
+hiddenMarkets.subscribe(() => {
+  for (const [id, entry] of shownNotifications) if (hiddenMarkets.isHidden(entry.symbol)) {
+    entry.notification.close(); shownNotifications.delete(id);
+  }
+});
 
 /** One SignalR connection per page. Initial state is loaded over REST, then the hub keeps it live. */
 export async function startConnection(): Promise<void> {
@@ -58,8 +65,15 @@ async function refresh(): Promise<void> {
 /** Browser notification for a fired alert, when the user has granted permission. */
 function notify(a: AlertEvent): void {
   try {
+    if (hiddenMarkets.isHidden(a.symbol)) return;
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    new Notification(`${a.ruleName} · ${a.symbol}`, { body: a.message, tag: a.id });
+    const notification = new Notification(`${a.ruleName} · ${a.symbol}`, { body: a.message, tag: a.id });
+    shownNotifications.set(a.id, { symbol: a.symbol, notification });
+    notification.onclose = () => { shownNotifications.delete(a.id); };
+    if (shownNotifications.size > 100) {
+      const oldest = shownNotifications.entries().next().value;
+      if (oldest) { oldest[1].notification.close(); shownNotifications.delete(oldest[0]); }
+    }
   } catch { /* notifications unavailable in this context */ }
 }
 

@@ -107,6 +107,8 @@ export interface SymbolSummaryDto {
 }
 
 export interface FeedStatus {
+  /** Public market-data scope; it does not verify this account's Buy & Sell eligibility. */
+  marketAccess?: { countryCode: string; region: string; tradingVenue: string; excludedAssets: string[] };
   provider: string;
   exchange: string;
   status: string;
