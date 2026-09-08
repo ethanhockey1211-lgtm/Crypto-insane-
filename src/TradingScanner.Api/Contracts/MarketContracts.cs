@@ -61,7 +61,11 @@ public sealed record FeedStatusDto(
     WarmUpDto History,
     IReadOnlyList<EngineErrorDto> RecentErrors,
     /// <summary>"postgres" when a database is configured, otherwise "memory" (alerts, paper trades and signals reset on restart).</summary>
-    string Persistence);
+    string Persistence,
+    MarketAccessDto? MarketAccess = null);
+
+/// <summary>Public catalog scope and configured app exclusions; not verified account-level Buy/Sell eligibility.</summary>
+public sealed record MarketAccessDto(string CountryCode, string Region, string TradingVenue, string[] ExcludedAssets);
 
 /// <summary>REST history warm-up progress: symbols loaded/failed out of the universe, and the last failure text.</summary>
 public sealed record WarmUpDto(int Total, int Loaded, int Failed, string? LastError, bool Complete);

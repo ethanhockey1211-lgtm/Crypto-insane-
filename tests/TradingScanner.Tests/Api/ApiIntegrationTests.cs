@@ -24,7 +24,7 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
 {
     public sealed class FakeProvider : IMarketDataProvider
     {
-        public string Name => "fake";
+        public string Name { get; set; } = "fake";
         public string Exchange => "Fake Exchange";
         public FeedStatus Status { get; private set; }
         public IReadOnlySet<Timeframe> HistoricalTimeframes { get; } = new HashSet<Timeframe>();
@@ -108,6 +108,28 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
     }
 
     private Task<HttpClient> ClientAsync() => ClientAsync(_factory);
+
+    [Theory]
+    [InlineData("kraken")]
+    [InlineData("fake")]
+    public async Task Feed_reports_shipped_access_profile_only_for_Kraken(string providerName)
+    {
+        using var factory = new Factory();
+        factory.Provider.Name = providerName;
+        using var client = await ClientAsync(factory);
+        var feed = await client.GetFromJsonAsync<FeedStatusDto>("/api/system/feed");
+        Assert.NotNull(feed);
+        if (providerName != "kraken")
+        {
+            Assert.Null(feed.MarketAccess);
+            return;
+        }
+        Assert.NotNull(feed.MarketAccess);
+        Assert.Equal("US", feed.MarketAccess.CountryCode);
+        Assert.Equal("Minnesota", feed.MarketAccess.Region);
+        Assert.Equal("Kraken app · Buy & Sell", feed.MarketAccess.TradingVenue);
+        Assert.Equal(["KAS", "NPC", "RE"], feed.MarketAccess.ExcludedAssets);
+    }
 
     [Fact]
     public async Task Prepare_only_accepts_current_catalog_symbols_without_creating_new_markets()

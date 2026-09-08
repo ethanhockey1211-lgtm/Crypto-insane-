@@ -4,14 +4,17 @@ import { useCycle, useFeed, useHub, useMarket, useSymbol } from "@/lib/store";
 import { scannerIsFresh } from "@/lib/decision";
 import { radarQuoteIsFresh } from "@/lib/radar";
 import { fmtPct, fmtPrice, signClass } from "@/lib/format";
+import { hiddenMarkets, useHiddenMarkets } from "@/lib/hidden-markets";
 
 const REGIME: Record<string, string> = { StrongRiskOn: "Strong risk-on", RiskOn: "Risk-on", Neutral: "Neutral", RiskOff: "Risk-off", StrongRiskOff: "Strong risk-off" };
 
 function Asset({ symbol, live }: { symbol: string; live: boolean }) {
   const summary = useSymbol(symbol);
+  useHiddenMarkets();
   const quote = summary?.quote;
   const fresh = live && radarQuoteIsFresh(quote, Date.now());
   const change = fresh && summary?.open24h && summary.open24h > 0 ? quote.price / summary.open24h - 1 : null;
+  if (hiddenMarkets.isHidden(symbol)) return null;
   return <div className="min-w-0 px-3 py-2.5 border-l border-line"><p className="eyebrow">{symbol.replace("-USD", "")} <span className="text-ink-3">/ USD</span></p><div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-1"><span className="num text-[14px] font-medium">{fresh ? fmtPrice(quote.price) : "—"}</span><span className={`num text-[10px] ${signClass(change)}`}>{fmtPct(change)} <span className="text-ink-3">24h</span></span></div></div>;
 }
 
@@ -25,9 +28,11 @@ export function MarketHeader() {
   const regime = fresh && market ? REGIME[market.regime] : "Warming up";
   const regimeClass = !fresh ? "text-ink-3" : market?.regime.endsWith("On") ? "text-up" : market?.regime.endsWith("Off") ? "text-down" : "text-accent";
   const loaded = feed?.history.loaded ?? 0, total = feed?.history.total ?? 0;
+  const access = feed?.marketAccess;
+  const marketScope = access ? [access.countryCode ? `${access.countryCode} market data` : "Market country unspecified", access.region].filter(Boolean).join(" · ") : "Market access not yet reported";
   return <header className="rounded-xl border border-line-strong bg-navy overflow-hidden shrink-0">
     <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-line">
-      <div className="flex items-center gap-3"><div className="grid h-8 w-8 place-items-center rounded-lg bg-accent/10 border border-accent/20 text-accent" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 17 8 12l4 3 8-11M15 4h5v5" /></svg></div><div><h1 className="text-[15px] font-semibold tracking-wide">KRAKEN <span className="font-normal text-ink-3">SCANNER</span></h1><p className="text-[10px] text-ink-3">Live markets. Clear plans.</p></div></div>
+      <div className="flex items-center gap-3"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/10 border border-accent/20 text-accent" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 17 8 12l4 3 8-11M15 4h5v5" /></svg></div><div><h1 className="text-[15px] font-semibold tracking-wide">KRAKEN <span className="font-normal text-ink-3">SCANNER</span></h1><p className="text-[10px] text-ink-2">{marketScope}</p><p className="text-[10px] text-ink-3">{access?.tradingVenue ? `${access.tradingVenue} · ` : ""}App buy eligibility unverified</p></div></div>
       <div className="flex items-center gap-2 text-[11px]"><span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-up" : "bg-warn"}`} /><span className={connected ? "text-up" : "text-warn"}>{connected ? "Exchange connected" : "Connecting to market"}</span><span className="hidden sm:inline text-ink-3 ml-2 num">{total} USD pairs</span></div>
     </div>
     <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-[1fr_1.2fr_1.2fr_1fr_1.4fr]">

@@ -39,9 +39,9 @@ internal static class KrakenTestSupport
 
     public static StubHttpHandler Handler() => new StubHttpHandler().On("/0/public/AssetPairs", Catalog).On("/0/public/Ticker", Tickers);
 
-    public static KrakenRestClient Rest(StubHttpHandler? handler = null, KrakenOptions? options = null, TimeProvider? time = null) =>
+    public static KrakenRestClient Rest(StubHttpHandler? handler = null, KrakenOptions? options = null, TimeProvider? time = null, MarketDataOptions? marketOptions = null) =>
         new(new HttpClient(handler ?? Handler()) { BaseAddress = new Uri("https://kraken.test/") }, options ?? new KrakenOptions(),
-            new MarketDataOptions(), new RequestRateLimiter(1000, TimeSpan.FromSeconds(1)), new MarketDataMetrics(), NullLogger<KrakenRestClient>.Instance, time);
+            marketOptions ?? new MarketDataOptions(), new RequestRateLimiter(1000, TimeSpan.FromSeconds(1)), new MarketDataMetrics(), NullLogger<KrakenRestClient>.Instance, time);
 
     public static KrakenExchangeProvider Provider(ScriptedSocketFactory factory, MarketDataOptions? options = null, MarketDataMetrics? metrics = null) =>
         new(new KrakenOptions(), options ?? T.FastOptions(), Rest(), factory, metrics ?? new MarketDataMetrics(),

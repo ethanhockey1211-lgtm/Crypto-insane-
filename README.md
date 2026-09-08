@@ -9,15 +9,36 @@ Nothing here predicts prices. No setup is ever presented as certain. Real-money 
 
 ## Kraken USD scanner
 
-The shipped configuration now uses Kraken public spot market data. The universe is built from live Kraken
-AssetPairs metadata; every online crypto USD pair is listed, including stablecoins, wrapped assets,
-small markets and pairs without 24h volume statistics. `MarketData:IncludeAllPairs=true` bypasses the
-ranked universe's 200-pair cap, volume floor and excluded-base list. Execution checks remain separate:
-being listed does not mean a coin has a qualified entry. BTC and ETH remain available for market context.
-REST and WebSocket symbols are normalized (XBT to BTC and XDG to
-DOGE), and every quote retains Kraken provenance. Set `Kraken:CountryCode` to your ISO country code to request
-the exchange's regional pair filter; an unconfigured public listing is not a guarantee of availability for
-your account. Listings refresh when the service restarts.
+The shipped configuration uses Kraken public spot market data with `Kraken:CountryCode=US` for this
+installation's Minnesota account. The universe comes from live, online crypto USD AssetPairs after
+Kraken's country filter and configured app exclusions. `MarketData:IncludeAllPairs=true` includes small
+markets, stablecoins and pairs without volume statistics; it bypasses the ranked universe's size, volume
+and generic excluded-base filters, **never the country or app exclusions**. Being listed does not establish
+a qualified entry or regular-app Buy eligibility. BTC and ETH remain available for market context.
+REST and WebSocket symbols are normalized (XBT to BTC and XDG to DOGE), and every quote retains Kraken
+provenance. Listings refresh when the service restarts.
+
+### Regular Kraken app availability
+
+The deployment profile is US / Minnesota / Kraken app Buy & Sell. Only the two-letter country code is
+sent to Kraken; the state and trading venue are display context. A failed regional request is an error,
+with no fallback to the global catalog. See the [AssetPairs country filter](https://docs.kraken.com/api-reference/market-data/get-tradable-asset-pairs)
+and [Kraken's regional restrictions](https://support.kraken.com/articles/where-is-kraken-licensed-or-regulated).
+
+`Kraken:ExcludedAssets` ships with `NPC`, `RE` and `KAS`, which this installation's user reported absent
+from the regular app's Buy list. These are account/app exceptions, not claims of US prohibition or
+delisting. They are removed before subscriptions, history warm-up, analysis and alerts. The list can be
+updated in configuration when the user's availability changes; restart after changing it.
+
+The public spot catalog does not verify account-specific Instant Buy eligibility. Kraken documents
+regional restrictions and delays before newly listed assets appear in the regular app. The header
+therefore identifies the public market-data scope and leaves app eligibility unverified. See the
+[Instant Buy FAQ](https://support.kraken.com/articles/360060101312-faq-s-about-buying-instantly).
+
+For other unavailable coins, use **Hide unavailable** in the coin drawer. Manage and restore hidden coins
+from the scanner. These additional preferences persist in the current browser and filter discovery and
+browser alerts; they do not change server webhook rules or erase paper trades and historical records.
+Deployment-level exclusions apply across devices, while browser preferences stay on that browser.
 
 The decision board separates in-zone candidates, setups waiting for price, and developing setups still
 blocked by execution checks. It shows entry zones, confirmation triggers, stops, first targets and net R
@@ -169,7 +190,7 @@ The API listens on `http://localhost:5080` by default (`Urls` in `appsettings.js
 | `GET /api/performance`, `GET /api/performance/signals?limit=&symbol=` | Signal outcome report and recent signals with outcomes |
 | `POST /api/backtest` | Replay a few symbols over recent history with cost assumptions; returns signals plus gross and net reports |
 | `POST /api/scanner/{symbol}/explain` | AI narrative of the engine's numbers. 503 with a clear message when no `ANTHROPIC_API_KEY` is configured |
-| `GET /api/system/feed` | Provider status per connection, last feed event age, universe size, startup phase and error, stats/history warm-up counts, recent engine-loop exceptions, persistence kind (`postgres` or `memory`) |
+| `GET /api/system/feed` | Provider status per connection, last feed event age, universe size, startup phase and error, stats/history warm-up counts, recent engine-loop exceptions, persistence kind and Kraken `marketAccess` profile (country, display region/venue and configured exclusions; not verified Buy eligibility) |
 | `GET /api/system/metrics` | Ingestion counters: messages, reconnects, gaps, latency, channel depth |
 | `GET /health/live`, `GET /health/ready` | Liveness / readiness (ready = feed connected and fresh) |
 | `/hubs/market` (SignalR) | `quotes` batches every 250 ms, `candle` closes for subscribed groups, `feed` status, `gap` notices, `scanner` ranked snapshot each cycle, `tape` events, `alert` firings |
@@ -182,7 +203,7 @@ four requests per symbol at two requests per second; 200 symbols take roughly se
 
 | Key | Default | Meaning |
 |---|---|---|
-| `IncludeAllPairs` | true (shipped configuration) | Include all online pairs in the configured quote currency; bypass size, volume and excluded-base filters |
+| `IncludeAllPairs` | true (shipped configuration) | Include online pairs within the provider's country/app filters; bypass ranked size, volume and generic excluded-base filters |
 | `UniverseSize` | 200 | Ranked-mode cap; ignored when `IncludeAllPairs` is true |
 | `MinVolume24hQuote` | 1,000,000 | Ranked-mode liquidity floor; ignored when `IncludeAllPairs` is true |
 | `SymbolsPerConnection` | 60 | Sharding of the WebSocket subscription |

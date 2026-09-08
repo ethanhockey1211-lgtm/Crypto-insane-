@@ -13,6 +13,7 @@ import { PaperTrading } from "@/components/PaperTrading";
 import { Performance } from "@/components/Performance";
 import { Backtest } from "@/components/Backtest";
 import { EntryAlerts } from "@/components/EntryAlerts";
+import { startHiddenMarkets } from "@/lib/hidden-markets";
 
 type View = "scanner" | "heatmap" | "watchlist" | "alerts" | "paper" | "performance" | "backtest" | "tape";
 
@@ -21,7 +22,12 @@ export default function Page() {
   const [active, setActive] = useState<string | null>(null);
   const [list, add, remove] = useWatchlist();
 
-  useEffect(() => { void startConnection(); return startFeedPolling(); }, []);
+  useEffect(() => {
+    const stopVisibility = startHiddenMarkets();
+    void startConnection();
+    const stopPolling = startFeedPolling();
+    return () => { stopPolling(); stopVisibility(); };
+  }, []);
   const open = useCallback((s: string) => setActive(s), []);
   const close = useCallback(() => setActive(null), []);
   const toggleWatch = useCallback((s: string) => (list.includes(s) ? remove(s) : add(s)), [list, add, remove]);
