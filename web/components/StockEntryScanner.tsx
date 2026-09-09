@@ -4,6 +4,7 @@ import { API_BASE } from "@/lib/api";
 import { scanStockSetups, stockSetupIsCurrent, type StockScanResponse, type StockScannerStatus, type StockSetup } from "@/lib/stock-scanner";
 import type { StockItem, StockPlan } from "@/lib/stocks";
 import { StockEntryAlertTracker } from "@/lib/stock-entry-alerts";
+import { stockFeedError } from "@/lib/stock-feed-error";
 
 export interface ScannerPlan {
   id: string; symbol: string; setup: StockPlan["setup"]; entry: number; stop: number; target: number; asOf: string;
@@ -33,7 +34,8 @@ function useStockFeed(symbols: string, access: string, paused: boolean, refresh:
       const request = new AbortController();
       const abort = () => request.abort();
       controller.signal.addEventListener("abort", abort);
-      const timeout = setTimeout(abort, 20_000);
+      // Allow the server's 20-second provider timeout to return its diagnostic.
+      const timeout = setTimeout(abort, 30_000);
       if (alive) setLoading(true);
       try {
         const state = await fetch(`${API_BASE}/api/stocks/status`, { cache: "no-store", signal: request.signal });
@@ -44,10 +46,7 @@ function useStockFeed(symbols: string, access: string, paused: boolean, refresh:
         setStatus(nextStatus);
         if (!nextStatus.configured || !access || !symbols || !fetchData) { setError(""); return; }
         const res = await fetch(`${API_BASE}/api/stocks/scan?symbols=${encodeURIComponent(symbols)}`, { cache: "no-store", headers: { "X-Stock-Access-Token": access }, signal: request.signal });
-        if (!res.ok) throw new Error(res.status === 401 || res.status === 403 ? "Access code rejected. Use the personal Stocks__AccessToken from your Render settings."
-          : res.status === 429 ? "The data request limit was reached. The scanner will retry on its next 30-second cycle."
-            : res.status === 503 ? "Stock data is not configured. Add the Alpaca keys and personal access code in Render."
-              : "Alpaca stock data could not be loaded. Check the data keys and IEX access in your Render settings, then retry.");
+        if (!res.ok) throw new Error(stockFeedError(res.status, await res.json().catch(() => null)));
         const next = await res.json() as StockScanResponse;
         if (next.status !== "ready" || next.provider !== "Alpaca" || next.feed !== "iex" || !Array.isArray(next.rows) || !Number.isFinite(Date.parse(next.asOf))) throw new Error("A complete IEX scan is unavailable. Entry prompts are disabled until a fresh scan succeeds.");
         if (alive) { setData(next); setError(""); }

@@ -47,3 +47,18 @@ Private stock-data requests to `GET /api/stocks/scan` carry the personal access 
 The backend uses explicitly selected `feed=iex` for bulk [snapshots](https://docs.alpaca.markets/us/reference/stocksnapshots-1) and [one-minute history](https://docs.alpaca.markets/us/reference/stockbars). Requests use a shared cache of up to eight symbol sets with a 30-second lifetime, coalesce matching fetches, and guard upstream traffic at 180 requests per minute, below the Basic plan's documented 200-per-minute allowance. History is bounded to three provider pages and 400 retained bars per symbol; unfinished pagination cannot qualify a setup.
 
 If the app remains locked after deployment, check the access code against `Stocks__AccessToken`. If the provider rejects the connection, check both Alpaca credentials in Render and redeploy after correcting them. If you regenerate Alpaca keys, update both Render values. A configured status means settings exist; it does not prove the provider accepted them or that quotes are fresh.
+
+## Connection troubleshooting
+
+The scanner shows a diagnostic code beside connection failures. These codes contain no credentials:
+
+| Message/code | Next step |
+|---|---|
+| Access code rejected | Enter your personal `Stocks__AccessToken` in the scanner. |
+| `invalid-credentials` | Replace an endpoint URL in `Stocks__ApiKey` or `Stocks__ApiSecret` with the actual credential. The scanner already uses Alpaca's data endpoint; no endpoint variable is needed. |
+| `provider-unauthorized` (Alpaca 401) | Update **both** Alpaca credentials in Render using the same generated pair, then save and deploy. |
+| `provider-forbidden` (Alpaca 403) | Check the matching key/secret pair and your Alpaca account's IEX data access. This status can indicate credentials or permissions. |
+| `provider-request` or `provider-response` | Refresh once. If it persists, report the diagnostic code so the scanner request or response handling can be investigated. |
+| `provider-rate-limit`, `provider-unavailable`, `provider-timeout`, or `provider-network` | Let the next refresh retry. Persistent failures need a connection/service check. |
+
+Share only the diagnostic message when asking for help. The scanner never displays Alpaca's raw error response or your keys. A generic HTTP error without a diagnostic code may come from an older deployment or hosting proxy and does not establish that your keys are wrong.

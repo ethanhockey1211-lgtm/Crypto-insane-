@@ -38,6 +38,8 @@ public sealed class AlpacaStockScanner : IDisposable
     {
         if (!_options.Configured) return Failure(503, "not-configured", GetStatus().Message);
         if (!Authorized(accessToken)) return Failure(401, "error", "A valid stock access code is required.");
+        if (LooksLikeEndpoint(_options.ApiKey) || LooksLikeEndpoint(_options.ApiSecret))
+            return Failure(503, "error", "An Alpaca endpoint URL was entered as a credential. In Render, set Stocks__ApiKey to the Alpaca Key ID and Stocks__ApiSecret to its matching Secret Key, then save and deploy. No endpoint setting is needed.", "invalid-credentials");
         if (!TrySymbols(rawSymbols, out var symbols)) return Failure(400, "error", "Request 1 to 40 distinct US stock tickers separated by commas.");
         var key = string.Join(',', symbols);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20), _time);
@@ -56,11 +58,13 @@ public sealed class AlpacaStockScanner : IDisposable
             _cache[key] = new(now, response);
             return new(200, response);
         }
-        catch (ProviderFailure failure) { return Failure(failure.StatusCode, "error", failure.SafeMessage); }
+        catch (ProviderFailure failure) { return Failure(failure.StatusCode, "error", failure.SafeMessage, failure.ErrorCode); }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        { return Failure(502, "error", "Stock data did not respond in time. Try again shortly."); }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or FormatException or InvalidOperationException or IOException or ArgumentException)
-        { return Failure(502, "error", "Stock data is temporarily unavailable. Check the server configuration or try again shortly."); }
+        { return Failure(502, "error", "Alpaca did not respond in time. Wait a moment, then refresh the stock scan.", "provider-timeout"); }
+        catch (Exception ex) when (ex is HttpRequestException or IOException)
+        { return Failure(502, "error", "The scanner could not reach Alpaca or finish receiving its data. Wait a moment, then refresh the stock scan.", "provider-network"); }
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException or ArgumentException)
+        { return Failure(502, "error", "Alpaca returned stock data the scanner could not read safely. Refresh once; if this continues, the data integration needs checking.", "provider-response"); }
         finally { if (entered) _gate.Release(); }
     }
 
@@ -70,6 +74,9 @@ public sealed class AlpacaStockScanner : IDisposable
         return CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(candidate.Trim())),
             SHA256.HashData(Encoding.UTF8.GetBytes(_options.AccessToken.Trim())));
     }
+
+    private static bool LooksLikeEndpoint(string value) => value.Trim().StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+        || value.Trim().StartsWith("http://", StringComparison.OrdinalIgnoreCase);
 
     private static bool TrySymbols(string? raw, out string[] symbols)
     {
@@ -157,14 +164,25 @@ public sealed class AlpacaStockScanner : IDisposable
     {
         var now = _time.GetUtcNow();
         while (_requests.TryPeek(out var at) && now - at >= TimeSpan.FromMinutes(1)) _requests.Dequeue();
-        if (_requests.Count >= 180) throw new ProviderFailure(429, "The stock data request limit was reached. Wait a minute before refreshing.");
+        if (_requests.Count >= 180) throw new ProviderFailure(429, "provider-rate-limit", "The stock data request limit was reached. Wait a minute before refreshing.");
         _requests.Enqueue(now);
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri("https://data.alpaca.markets" + path));
         request.Headers.Add("APCA-API-KEY-ID", _options.ApiKey.Trim());
         request.Headers.Add("APCA-API-SECRET-KEY", _options.ApiSecret.Trim());
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.TooManyRequests) throw new ProviderFailure(429, "The stock data provider is rate limited. Wait before refreshing.");
-        if (!response.IsSuccessStatusCode) throw new ProviderFailure(502, "Stock data is unavailable. Check the server credentials and IEX data access.");
+        if (!response.IsSuccessStatusCode) throw response.StatusCode switch
+        {
+            HttpStatusCode.Unauthorized => new ProviderFailure(502, "provider-unauthorized",
+                "Alpaca rejected the API credentials. In Render, replace Stocks__ApiKey and Stocks__ApiSecret with the Key ID and Secret Key from the same Alpaca key pair, then save and deploy."),
+            HttpStatusCode.Forbidden => new ProviderFailure(502, "provider-forbidden",
+                "Alpaca denied this IEX data request. Check that the Alpaca account has stock market-data access and that Render has its matching Key ID and Secret Key. Contact Alpaca if access is still denied."),
+            HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity => new ProviderFailure(502, "provider-request",
+                "Alpaca rejected the stock-data request. Refresh with one standard US ticker such as AAPL; if it still fails, the scanner request needs checking."),
+            HttpStatusCode.TooManyRequests => new ProviderFailure(429, "provider-rate-limit",
+                "Alpaca's stock data request limit was reached. Wait a minute before refreshing."),
+            _ => new ProviderFailure(502, "provider-unavailable",
+                "Alpaca could not serve stock data right now. Wait a moment, then refresh the stock scan.")
+        };
         if (response.Content.Headers.ContentLength > MaxResponseBytes) throw new JsonException();
         await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         using var memory = new MemoryStream();
@@ -239,7 +257,8 @@ public sealed class AlpacaStockScanner : IDisposable
         return DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture,
             DateTimeStyles.AdjustToUniversal, out var at) ? at : null;
     }
-    private StockScanResult Failure(int statusCode, string status, string message) => new(statusCode, new(status, "Alpaca", "iex", _time.GetUtcNow(), message, []));
+    private StockScanResult Failure(int statusCode, string status, string message, string? errorCode = null) =>
+        new(statusCode, new(status, "Alpaca", "iex", _time.GetUtcNow(), message, [], errorCode));
     private static DateTimeOffset ToUtc(DateTime local) => new(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), Eastern));
     private static TimeZoneInfo FindEastern()
     {
@@ -248,6 +267,6 @@ public sealed class AlpacaStockScanner : IDisposable
     }
     public void Dispose() { _http.Dispose(); _gate.Dispose(); }
     private sealed record CacheEntry(DateTimeOffset At, StockScanResponse Response);
-    private sealed class ProviderFailure(int statusCode, string safeMessage) : Exception
-    { public int StatusCode { get; } = statusCode; public string SafeMessage { get; } = safeMessage; }
+    private sealed class ProviderFailure(int statusCode, string errorCode, string safeMessage) : Exception
+    { public int StatusCode { get; } = statusCode; public string ErrorCode { get; } = errorCode; public string SafeMessage { get; } = safeMessage; }
 }
