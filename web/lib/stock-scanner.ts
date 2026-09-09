@@ -36,6 +36,20 @@ export interface StockScannerStatus {
   refreshSeconds: number;
   message: string;
 }
+export interface StockSetupDetails {
+  thesis: string;
+  triggerPrice: number | null;
+  /** A completed-bar pattern can be confirmed while other entry checks still fail. */
+  triggerConfirmed: boolean;
+  confirmation: string;
+  invalidation: string;
+  cautions: string[];
+  scoreFactors: { label: string; earned: number; possible: number; detail: string }[];
+  levels: { label: string; price: number; kind: "support" | "resistance" | "reference" }[];
+  trendLabel: string;
+  target1: number | null;
+  target2: number | null;
+}
 export interface StockSetup {
   symbol: string;
   ticker: string;
@@ -61,6 +75,7 @@ export interface StockSetup {
   quoteAt: string | null;
   reasons: string[];
   evidence: string[];
+  details?: StockSetupDetails;
 }
 
 const MINUTE = 60_000;
@@ -70,6 +85,17 @@ const easternClock = new Intl.DateTimeFormat("en-US", {
 });
 type TimedBar = StockBar & { time: number };
 type Trigger = { setup: StockPlan["setup"]; level: number; confirmed: boolean; volumeNeeded: number; explanation: string };
+type DetailContext = {
+  bars: TimedBar[];
+  start: number;
+  tradeFresh: boolean;
+  quoteFresh: boolean;
+  scored?: boolean;
+  trend?: boolean;
+  trigger?: Trigger;
+  near?: Trigger;
+  inZone?: boolean;
+};
 
 const positive = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
 const finiteOrNull = (value: number): number | null => Number.isFinite(value) ? value : null;
@@ -141,6 +167,106 @@ function priceText(value: number): string {
   return value >= 1 ? value.toFixed(2) : value.toPrecision(4);
 }
 
+const scoreRubric = [
+  ["Upward EMA trend", 20], ["Above estimated VWAP", 15], ["IEX relative volume", 10],
+  ["Completed setup trigger", 15], ["Fresh trade and quote", 15], ["IEX quoted spread", 10],
+  ["Trade and ask in entry zone", 15],
+] as const;
+
+function explainScore(out: StockSetup, context?: DetailContext): StockSetupDetails["scoreFactors"] {
+  // The existing scanner deliberately leaves the score at zero if the inputs needed for
+  // its checklist are incomplete. Do not award explanation points to those early exits.
+  if (!context?.scored) return scoreRubric.map(([label, possible]) => ({ label, possible, earned: 0,
+    detail: "Not assessed: complete, valid price and indicator inputs are required before this checklist is scored." }));
+  const last = context.bars.at(-1)!;
+  const trend = context.trend === true;
+  const volume = out.relativeVolume!;
+  const trigger = context.trigger;
+  const near = context.near && out.setup ? context.near : undefined;
+  const spreadPasses = out.spreadPct !== null && out.spreadPct <= MAX_SPREAD_PCT;
+  const values: [number, string][] = [
+    [trend ? 20 : 0, `EMA9 ${priceText(out.ema9!)} ${out.ema9! > out.ema20! ? "is above" : "is not above"} EMA20 ${priceText(out.ema20!)}; completed close ${priceText(last.close)} ${last.close >= out.ema9! ? "is at or above" : "is below"} EMA9. Both checks are required for 20 points.`],
+    [last.close > out.vwap! ? 15 : 0, `Completed close ${priceText(last.close)} ${last.close > out.vwap! ? "is above" : "is not above"} the estimated IEX session VWAP of ${priceText(out.vwap!)}. A close above earns 15 points.`],
+    [volume >= 1.1 ? 10 : volume >= 1 ? 5 : 0, `Latest completed IEX bar volume is ${volume.toFixed(2)}× the preceding 20 observed bars' average. At least 1.10× earns 10 points; at least 1.00× but below 1.10× earns 5; below 1.00× earns 0.`],
+    [trigger ? 15 : near ? 10 : 0, trigger ? `${trigger.setup} has a completed-bar trigger at ${priceText(trigger.level)} (15 points). Other entry checks are separate.`
+      : near ? `${near.setup} is within 0.75 ATR of ${priceText(near.level)} (10 proximity points); a completed trigger is still missing.`
+        : "No completed pattern or qualifying setup level within 0.75 ATR (0 points). A completed trigger earns 15; proximity alone earns 10."],
+    [context.tradeFresh && context.quoteFresh ? 15 : 0, `Trade ${context.tradeFresh ? "passes" : "fails"} and two-sided quote ${context.quoteFresh ? "passes" : "fails"} the 45-second freshness check. Both are required for 15 points; up to 5 seconds of upstream clock skew is tolerated.`],
+    [spreadPasses ? out.spreadPct! <= 0.15 ? 10 : 5 : 0, `${out.spreadPct === null ? "A valid fresh quoted spread is unavailable" : `IEX quoted spread is ${out.spreadPct.toFixed(3)}%`}. At most 0.15% earns 10 points; above 0.15% through 0.35% earns 5; a wider or unavailable spread earns 0.`],
+    [trigger && context.inZone ? 15 : 0, trigger && context.inZone
+      ? "Both the fresh IEX trade and ask are inside the completed trigger's compact reference zone (15 points)."
+      : "Both a completed trigger and the fresh trade and ask inside its reference zone are required for 15 points; this check is unmet."],
+  ];
+  return scoreRubric.map(([label, possible], index) => ({ label, possible, earned: values[index][0], detail: values[index][1] }));
+}
+
+function triggerRequirement(trigger: Trigger): string {
+  const level = priceText(trigger.level);
+  switch (trigger.setup) {
+    case "Opening range breakout": return `a bullish completed candle crossing from a prior close at or below the verified 09:30–09:44 ET high of ${level} to a close above it, with EMA9 above EMA20 and price at or above EMA9`;
+    case "VWAP reclaim": return `a bullish completed candle moving from a prior close at or below its estimated IEX session VWAP to a close above current estimated VWAP (${level}) and EMA20`;
+    case "Pullback": return `a bullish completed candle above the prior candle high of ${level}, after that candle touched the EMA9 area and held EMA20, with the upward EMA trend intact`;
+    case "Breakout": return `a bullish completed close above the preceding 20 observed bars' high of ${level}, with EMA9 above EMA20 and price at or above EMA9`;
+    default: return `a qualifying completed candle above the observed setup reference of ${level}`;
+  }
+}
+
+function explainSetup(out: StockSetup, context?: DetailContext): StockSetupDetails {
+  const bars = context?.bars ?? [];
+  const last = bars.at(-1);
+  const prior = bars.slice(0, -1);
+  const trigger = context?.trigger;
+  const reference = trigger ?? (out.setup ? context?.near : undefined);
+  const levels: StockSetupDetails["levels"] = [];
+  const addLevel = (label: string, price: number | null, kind: StockSetupDetails["levels"][number]["kind"]) => {
+    if (positive(price)) levels.push({ label, price, kind });
+  };
+  const structure = bars.length >= 3 ? Math.min(...bars.slice(-3).map(bar => bar.low)) : null;
+  addLevel("Recent three completed IEX bars' low", structure, "support");
+  if (prior.length >= 20) addLevel("Preceding 20 observed IEX bars' high", Math.max(...prior.slice(-20).map(bar => bar.high)), "resistance");
+  const opening = context ? bars.filter(bar => bar.time < context.start + 15 * MINUTE) : [];
+  const completeOpening = !!context && opening.length === 15 && opening.every((bar, index) => bar.time === context.start + index * MINUTE);
+  if (completeOpening) addLevel("Verified 09:30–09:44 ET opening-range high", Math.max(...opening.map(bar => bar.high)), "resistance");
+  addLevel("Estimated IEX session VWAP", out.vwap, "reference");
+  addLevel("EMA9 of completed observed IEX bars", out.ema9, "reference");
+  addLevel("EMA20 of completed observed IEX bars", out.ema20, "reference");
+  if (reference?.setup === "Pullback") addLevel("Prior completed IEX candle high", reference.level, "reference");
+  const priorHigh = prior.length ? Math.max(...prior.map(bar => bar.high)) : null;
+  addLevel("Earlier observed IEX session high", priorHigh, "reference");
+
+  const trendLabel = !last || !positive(out.ema9) || !positive(out.ema20) ? "Trend not assessed"
+    : out.ema9 > out.ema20 && last.close >= out.ema9 ? "Upward: EMA9 above EMA20, close at or above EMA9"
+      : out.ema9 > out.ema20 ? "EMA9 above EMA20, close below EMA9"
+        : "EMA9 is not above EMA20";
+  const thesis = trigger && last
+    ? `${out.ticker}: ${trigger.explanation} The last completed close was ${priceText(last.close)}, versus the ${priceText(trigger.level)} trigger reference; IEX bar volume was ${out.relativeVolume!.toFixed(2)}× its preceding 20 observed bars' average.`
+    : reference && last ? `${out.ticker} is being watched for ${reference.setup.toLowerCase()} around the ${priceText(reference.level)} observed reference. The last completed close was ${priceText(last.close)}; the required completed-bar pattern has not confirmed.`
+      : last ? `${out.ticker} has no completed long setup selected. The last completed close was ${priceText(last.close)}. ${trendLabel}; wait for the stated pattern and data checks to align.`
+        : `${out.ticker} has no assessable completed-bar setup in this scan. Valid current-session IEX observations are needed before a trade thesis can be formed.`;
+  const confirmation = reference
+    ? `${trigger ? "Completed-bar pattern confirmed" : "Still required"}: ${triggerRequirement(reference)}. The pattern needs IEX closed-bar relative volume of at least ${reference.volumeNeeded.toFixed(2)}×.${out.relativeVolume === null ? "" : ` Current reading: ${out.relativeVolume.toFixed(2)}×.`} ${out.state === "entry-zone" ? "The latest IEX trade and ask also pass the entry-zone checks." : "Entry eligibility still requires all listed checks to pass; pattern confirmation alone does not qualify an entry."}`
+    : "Wait for a qualifying completed-bar pattern, sufficient IEX volume, fresh two-sided pricing, and confirmed Kraken availability. No conditional trigger has been selected.";
+  const invalidation = out.state === "entry-zone" && positive(out.stop) && positive(structure)
+    ? `This reference plan is invalidated at the stop of ${priceText(out.stop)}, below the recent three-bar low of ${priceText(structure)}. The lower-zone entry-to-stop distance is at least 0.75 ATR. A stop order's execution price is not guaranteed.`
+    : out.state === "extended" ? "The compact entry condition has failed because the latest trade or IEX ask is above its reference zone. No active entry plan: wait for a fresh qualifying setup and avoid carrying forward the old trigger as an entry."
+      : `No active entry plan. ${out.reasons[0] ?? "The required completed-bar pattern has not confirmed."} Reassess after the missing checks pass; any conditional reference must be recomputed with a fresh scan.`;
+  const cautions = ["IEX is a single-exchange feed: observed prices, spread, and volume are not the consolidated US market or a Kraken execution quote."];
+  if (out.state !== "entry-zone") cautions.push(...out.reasons);
+  if (out.vwap !== null) cautions.push("Session VWAP is estimated from available IEX minute bars; missing minute VWAP uses typical OHLC prices.");
+  if (context && !completeOpening) cautions.push("The 15-minute opening range is unconfirmed because at least one 09:30–09:44 ET IEX bar is missing; no opening-range level is supplied.");
+  const recent = bars.slice(-21);
+  if (recent.length > 1) {
+    const slots = (recent.at(-1)!.time - recent[0].time) / MINUTE + 1;
+    if (slots > recent.length) cautions.push(`Sparse IEX observations: ${recent.length} completed bars cover ${slots} one-minute slots. Missing minutes are not filled with zero volume.`);
+  }
+  const observedPrice = out.price ?? last?.close;
+  if (positive(priorHigh) && positive(observedPrice) && priorHigh > observedPrice) cautions.push(`An earlier observed IEX session high at ${priceText(priorHigh)} is above the latest ${out.price === null ? "completed close" : "trade"}. It is an observed reference, not a guaranteed price barrier.`);
+  return { thesis, triggerPrice: reference?.level ?? null, triggerConfirmed: !!trigger, confirmation, invalidation,
+    cautions: [...new Set(cautions)], scoreFactors: explainScore(out, context), levels, trendLabel,
+    target1: out.state === "entry-zone" && positive(out.entryMax) && positive(out.stop) ? finiteOrNull(out.entryMax + (out.entryMax - out.stop)) : null,
+    target2: out.state === "entry-zone" ? out.target : null };
+}
+
 /** Recheck a displayed plan's eligibility without moving or reranking the user's reading view. */
 export function stockSetupIsCurrent(setup: StockSetup, response: StockScanResponse | null, nowMs: number): boolean {
   if (setup.state !== "entry-zone" || !response || response.status !== "ready" || response.provider !== "Alpaca" || response.feed !== "iex"
@@ -185,6 +311,7 @@ export function scanStockSetups(response: StockScanResponse, watchlist: StockIte
     matches.set(row.ticker, [...(matches.get(row.ticker) ?? []), row]);
   }
 
+  const detailContexts = new Map<string, DetailContext>();
   const seen = new Set<string>();
   const result = watchlist.filter(item => { if (seen.has(item.symbol)) return false; seen.add(item.symbol); return true; }).map(item => {
     const out = base(item);
@@ -213,6 +340,8 @@ export function scanStockSetups(response: StockScanResponse, watchlist: StockIte
 
     const clean = cleanBars(Array.isArray(data.bars) ? data.bars : [], start, end, nowMs);
     const bars = clean.bars;
+    const detailContext: DetailContext = { bars, start, tradeFresh, quoteFresh };
+    detailContexts.set(out.symbol, detailContext);
     const last = bars.at(-1), previous = bars.at(-2);
     out.barAt = last?.at ?? null;
     if (clean.invalid) blocked.push("Invalid or conflicting minute bars were excluded; complete session calculations cannot be trusted.");
@@ -290,6 +419,7 @@ export function scanStockSetups(response: StockScanResponse, watchlist: StockIte
     const near = candidates.filter(candidate => Math.abs(last.close - candidate.level) <= 0.75 * atr)
       .sort((a, b) => Math.abs(last.close - a.level) - Math.abs(last.close - b.level))[0];
     out.setup = trigger?.setup ?? (trend || last.close > out.vwap ? near?.setup ?? null : null);
+    Object.assign(detailContext, { scored: true, trend, trigger, near, inZone });
 
     const points: string[] = [];
     const add = (value: number, reason: string) => { out.score += value; points.push(`+${value} ${reason}`); };
@@ -332,5 +462,6 @@ export function scanStockSetups(response: StockScanResponse, watchlist: StockIte
     return out;
   });
   const order: Record<StockSetup["state"], number> = { "entry-zone": 0, watch: 1, extended: 2, blocked: 3, unavailable: 3 };
-  return result.sort((a, b) => order[a.state] - order[b.state] || b.score - a.score || a.symbol.localeCompare(b.symbol));
+  return result.map(out => ({ ...out, details: explainSetup(out, detailContexts.get(out.symbol)) }))
+    .sort((a, b) => order[a.state] - order[b.state] || b.score - a.score || a.symbol.localeCompare(b.symbol));
 }

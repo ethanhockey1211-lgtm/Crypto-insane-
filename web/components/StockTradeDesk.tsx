@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { sizeStockPlan, tradePnl, tradeR, type StockPlan, type StockTrade } from "@/lib/stocks";
 import type { ScannerPlan } from "@/components/StockEntryScanner";
+import type { StockRiskDraft } from "@/components/useStockRiskSettings";
 
 const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 const setups: StockPlan["setup"][] = ["Opening range breakout", "VWAP reclaim", "Breakout", "Pullback"];
@@ -22,6 +23,8 @@ interface Props {
   onAddTrade: (trade: StockTrade) => void;
   onDeleteTrade: (id: string) => void;
   scannerPlan?: ScannerPlan;
+  risk: StockRiskDraft;
+  onRiskChange: React.Dispatch<React.SetStateAction<StockRiskDraft>>;
 }
 
 function NumberField({ label, value, onChange, step = "any" }: { label: string; value: string; onChange: (value: string) => void; step?: string }) {
@@ -33,38 +36,24 @@ export function StockTradeDesk(props: Props) {
   const [entry, setEntry] = useState("");
   const [stop, setStop] = useState("");
   const [target, setTarget] = useState("");
-  const [account, setAccount] = useState("");
-  const [cash, setCash] = useState("");
-  const [riskPct, setRiskPct] = useState("0.5");
-  const [cost, setCost] = useState("0.02");
+  const { account, cash, riskPct, cost } = props.risk;
+  const setAccount = (value: string) => props.onRiskChange(old => ({ ...old, account: value }));
+  const setCash = (value: string) => props.onRiskChange(old => ({ ...old, cash: value }));
+  const setRiskPct = (value: string) => props.onRiskChange(old => ({ ...old, riskPct: value }));
+  const setCost = (value: string) => props.onRiskChange(old => ({ ...old, cost: value }));
   const [setup, setSetup] = useState<StockPlan["setup"]>(setups[0]);
   const [notes, setNotes] = useState("");
   const [checks, setChecks] = useState([false, false, false]);
+  useEffect(() => { setChecks([false, false, false]); }, [account, cash, riskPct, cost]);
   const [message, setMessage] = useState("");
   const [logging, setLogging] = useState<StockPlan | null>(null);
-  const [budgetLoaded, setBudgetLoaded] = useState(false);
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("kraken.stock-risk-settings.v1") ?? "null");
-      if (saved && typeof saved === "object") {
-        for (const [key, setter] of [["account", setAccount], ["cash", setCash], ["riskPct", setRiskPct], ["cost", setCost]] as const) {
-          const value = saved[key];
-          if (typeof value === "string" && value.length <= 30 && Number.isFinite(Number(value)) && Number(value) >= 0) setter(value);
-        }
-      }
-    } catch { /* optional browser preferences */ }
-    setBudgetLoaded(true);
-  }, []);
-  useEffect(() => {
-    if (!budgetLoaded) return;
-    try { localStorage.setItem("kraken.stock-risk-settings.v1", JSON.stringify({ account, cash, riskPct, cost })); } catch { /* keep editing in memory */ }
-  }, [account, cash, riskPct, cost, budgetLoaded]);
   const appliedScannerPlan = useRef("");
   useEffect(() => {
     const plan = props.scannerPlan;
     if (!plan || plan.symbol !== props.symbol || appliedScannerPlan.current === plan.id) return;
     appliedScannerPlan.current = plan.id;
     setEntry(String(plan.entry)); setStop(String(plan.stop)); setTarget(String(plan.target)); setSetup(plan.setup);
+    if (plan.notes) setNotes(plan.notes.slice(0, 2000));
     setChecks([false, false, false]); setTab("plan");
     setMessage(`Scanner levels loaded from ${new Date(plan.asOf).toLocaleTimeString()} (Alpaca IEX), using the top of the entry zone for sizing. Check the current Kraken quote before placing an order.`);
   }, [props.scannerPlan, props.symbol]);
@@ -119,7 +108,7 @@ export function StockTradeDesk(props: Props) {
           <div><div className="eyebrow">Cash reserved</div><strong className="num">{usd(result.capital)}</strong></div>
           <div><div className="eyebrow">Planned risk</div><strong className="num text-warn">{usd(result.risk)}</strong></div>
           <div><div className="eyebrow">Reward / risk</div><strong className="num">{result.rewardRisk.toFixed(2)}R</strong></div>
-          <p className="col-span-2 sm:col-span-4 text-ink-2">Estimated target profit {usd(result.reward)} after the cost buffer · risk budget {usd(result.riskBudget)}.</p>
+          <p className="col-span-2 sm:col-span-4 text-ink-2">If target reached: {usd(result.reward)} after the cost buffer · risk budget {usd(result.riskBudget)}.</p>
         </div> : <p className="text-ink-2 text-sm">{result.reason ?? "Enter levels and a cash budget to calculate a position."}</p>}
       </div>
       <div className="grid gap-2 text-sm my-4">
