@@ -1,6 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { sizeStockPlan, tradePnl, tradeR, type StockPlan, type StockTrade } from "@/lib/stocks";
+import type { ScannerPlan } from "@/components/StockEntryScanner";
 
 const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 const setups: StockPlan["setup"][] = ["Opening range breakout", "VWAP reclaim", "Breakout", "Pullback"];
@@ -20,6 +21,7 @@ interface Props {
   onDeletePlan: (id: string) => void;
   onAddTrade: (trade: StockTrade) => void;
   onDeleteTrade: (id: string) => void;
+  scannerPlan?: ScannerPlan;
 }
 
 function NumberField({ label, value, onChange, step = "any" }: { label: string; value: string; onChange: (value: string) => void; step?: string }) {
@@ -40,6 +42,32 @@ export function StockTradeDesk(props: Props) {
   const [checks, setChecks] = useState([false, false, false]);
   const [message, setMessage] = useState("");
   const [logging, setLogging] = useState<StockPlan | null>(null);
+  const [budgetLoaded, setBudgetLoaded] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("kraken.stock-risk-settings.v1") ?? "null");
+      if (saved && typeof saved === "object") {
+        for (const [key, setter] of [["account", setAccount], ["cash", setCash], ["riskPct", setRiskPct], ["cost", setCost]] as const) {
+          const value = saved[key];
+          if (typeof value === "string" && value.length <= 30 && Number.isFinite(Number(value)) && Number(value) >= 0) setter(value);
+        }
+      }
+    } catch { /* optional browser preferences */ }
+    setBudgetLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!budgetLoaded) return;
+    try { localStorage.setItem("kraken.stock-risk-settings.v1", JSON.stringify({ account, cash, riskPct, cost })); } catch { /* keep editing in memory */ }
+  }, [account, cash, riskPct, cost, budgetLoaded]);
+  const appliedScannerPlan = useRef("");
+  useEffect(() => {
+    const plan = props.scannerPlan;
+    if (!plan || plan.symbol !== props.symbol || appliedScannerPlan.current === plan.id) return;
+    appliedScannerPlan.current = plan.id;
+    setEntry(String(plan.entry)); setStop(String(plan.stop)); setTarget(String(plan.target)); setSetup(plan.setup);
+    setChecks([false, false, false]); setTab("plan");
+    setMessage(`Scanner levels loaded from ${new Date(plan.asOf).toLocaleTimeString()} (Alpaca IEX), using the top of the entry zone for sizing. Check the current Kraken quote before placing an order.`);
+  }, [props.scannerPlan, props.symbol]);
   const input = { entry: Number(entry), stop: Number(stop), target: Number(target), account: Number(account), riskPct: Number(riskPct), cash: Number(cash), costPerShare: Number(cost) };
   const result = sizeStockPlan(input);
   const symbolPlans = props.plans.filter(p => p.symbol === props.symbol);
@@ -61,7 +89,7 @@ export function StockTradeDesk(props: Props) {
   return <section className="panel rounded-lg p-3 sm:p-4 min-w-0" aria-label="Stock trade planner">
     <div className="flex flex-wrap gap-2 items-center justify-between mb-3">
       <div><div className="eyebrow">Your trading notebook</div><h2 className="text-lg font-semibold">{props.symbol.split(":")[1]} · plan & review</h2></div>
-      <span className="tag">Manual · long only</span>
+      <span className="tag">Long only · manual order</span>
     </div>
     <div className="flex flex-wrap gap-2 mb-4" aria-label="Stock notebook views">
       <button className="control-button" aria-pressed={tab === "plan"} onClick={() => setTab("plan")}>Build plan</button>
@@ -70,7 +98,7 @@ export function StockTradeDesk(props: Props) {
     </div>
     {message && <p role="status" className="text-accent text-sm mb-3">{message}</p>}
     {tab === "plan" && <>
-      <p className="text-ink-2 text-sm mb-4">Enter your own levels from the current Kraken quote. These are planning calculations; chart widgets do not generate or verify entries here.</p>
+      <p className="text-ink-2 text-sm mb-4">Use a qualified scanner plan or enter your own levels. Adjust them to the current Kraken quote before sizing. Orders and fill checks remain manual.</p>
       <label className="text-sm text-ink-2 grid gap-1">Setup to track<select className="field !py-2" value={setup} onChange={e => { setSetup(e.target.value as StockPlan["setup"]); setChecks([false, false, false]); }}>
         {setups.map(s => <option key={s}>{s}</option>)}
       </select></label>

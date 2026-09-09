@@ -11,6 +11,7 @@ using TradingScanner.Core.Providers;
 using TradingScanner.Infrastructure;
 using TradingScanner.MarketData;
 using TradingScanner.Signals;
+using TradingScanner.Api.Stocks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +30,7 @@ builder.Services.AddAnalytics(builder.Configuration);
 builder.Services.AddPostgresPersistence(builder.Configuration); // before AddSignals: replaces the in-memory stores when configured
 builder.Services.AddSingleton(builder.Configuration.HasPostgres() ? PersistenceInfo.Postgres : PersistenceInfo.Memory);
 builder.Services.AddSignals(builder.Configuration);
+builder.Services.AddStockScanner(builder.Configuration);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddSingleton<MarketBroadcaster>();
@@ -104,6 +106,7 @@ app.MapPaperEndpoints();
 app.MapPerformanceEndpoints();
 app.MapBacktestEndpoints();
 app.MapExplainEndpoints();
+app.MapStockEndpoints();
 app.MapHub<MarketHub>("/hubs/market");
 if (hasDashboard)
     app.MapFallbackToFile("{*path:regex(^(?!api/|hubs/|health/).*$)}", "index.html");

@@ -23,6 +23,9 @@ services:
       # Optional. Enables the AI narrative; never exposed to the browser.
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Optional private stock scanner: set Stocks__ApiKey, Stocks__ApiSecret and a separate
+      # 24+ character Stocks__AccessToken in this service's Environment settings, then redeploy.
+      # See docs/stock-signal-setup.md. Never add their values to the repository.
 
 databases:
   - name: tradingscanner-db
