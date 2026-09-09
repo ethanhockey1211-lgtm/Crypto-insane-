@@ -242,6 +242,7 @@ public class AlpacaStockScannerTests
         var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
         Assert.Equal(502, result.StatusCode);
         Assert.Equal("error", result.Body.Status);
+        Assert.Equal("provider-response", result.Body.ErrorCode);
         Assert.Empty(result.Body.Rows);
         Assert.DoesNotContain(body, JsonSerializer.Serialize(result.Body));
     }
@@ -317,6 +318,34 @@ public class AlpacaStockScannerTests
         Assert.Empty(handler.Requests);
     }
 
+    [Theory]
+    [InlineData("key", "https://paper-api.alpaca.markets/v2")]
+    [InlineData("secret", "https://paper-api.alpaca.markets/v2")]
+    [InlineData("key", "  HTTPS://data.alpaca.markets/v2  ")]
+    [InlineData("secret", "http://example.invalid/credential")]
+    public async Task Endpoint_urls_in_credentials_are_diagnosed_only_after_private_access_authentication(string field, string endpoint)
+    {
+        var options = Config();
+        if (field == "key") options.ApiKey = endpoint; else options.ApiSecret = endpoint;
+        var handler = new Handler(); using var scanner = Scanner(handler, options: options);
+        using var normal = Scanner(new Handler());
+        Assert.Equal(normal.GetStatus(), scanner.GetStatus());
+        var unauthorized = await scanner.ScanAsync("NVDA", "incorrect", CancellationToken.None);
+        Assert.Equal(401, unauthorized.StatusCode);
+        Assert.Null(unauthorized.Body.ErrorCode);
+        Assert.DoesNotContain("endpoint", unauthorized.Body.Message!, StringComparison.OrdinalIgnoreCase);
+        var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
+        Assert.Equal(503, result.StatusCode);
+        Assert.Equal("invalid-credentials", result.Body.ErrorCode);
+        Assert.Contains("Stocks__ApiKey", result.Body.Message);
+        Assert.Contains("Stocks__ApiSecret", result.Body.Message);
+        Assert.Empty(result.Body.Rows);
+        Assert.Empty(handler.Requests);
+        var json = JsonSerializer.Serialize(result.Body);
+        Assert.DoesNotContain(endpoint.Trim(), json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(Key, json); Assert.DoesNotContain(Secret, json); Assert.DoesNotContain(Token, json);
+    }
+
     [Fact]
     public async Task Future_quotes_and_trades_are_unavailable_and_future_bars_are_never_published()
     {
@@ -331,18 +360,70 @@ public class AlpacaStockScannerTests
         Assert.True(row.Bars[0].At.AddMinutes(1) <= Now);
     }
 
+    public static IEnumerable<object[]> UpstreamFailures() =>
+        from bars in new[] { false, true }
+        from item in new[]
+        {
+            (401, "provider-unauthorized"), (403, "provider-forbidden"),
+            (400, "provider-request"), (404, "provider-request"), (422, "provider-request"),
+            (429, "provider-rate-limit"), (500, "provider-unavailable"), (502, "provider-unavailable"), (302, "provider-unavailable")
+        }
+        select new object[] { bars, item.Item1, item.Item2 };
+
     [Theory]
-    [InlineData(401, 502)] [InlineData(403, 502)] [InlineData(429, 429)] [InlineData(500, 502)] [InlineData(302, 502)]
-    public async Task Upstream_errors_never_reflect_provider_body_or_return_stale_rows(int upstream, int expected)
+    [MemberData(nameof(UpstreamFailures))]
+    public async Task Upstream_errors_identify_the_failure_without_reflecting_provider_body_or_returning_stale_rows(bool failBars, int upstream, string code)
     {
         var failing = false;
-        var handler = new Handler((request, _) => Task.FromResult(failing ? Json(Key + Secret + Token, (HttpStatusCode)upstream)
+        var handler = new Handler((request, _) => Task.FromResult(failing && request.RequestUri!.AbsolutePath.EndsWith(failBars ? "bars" : "snapshots")
+            ? Json(Key + Secret + Token, (HttpStatusCode)upstream)
             : Json(request.RequestUri!.AbsolutePath.EndsWith("snapshots") ? Snapshot : Bars(Bar()))));
         var clock = new Clock(Now); using var scanner = Scanner(handler, clock);
         Assert.Equal(200, (await scanner.ScanAsync("NVDA", Token, CancellationToken.None)).StatusCode);
         clock.At += TimeSpan.FromSeconds(30); failing = true;
         var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
-        Assert.Equal(expected, result.StatusCode); Assert.Equal("error", result.Body.Status); Assert.Empty(result.Body.Rows);
+        Assert.Equal(upstream == 429 ? 429 : 502, result.StatusCode);
+        Assert.Equal("error", result.Body.Status); Assert.Equal(code, result.Body.ErrorCode); Assert.Empty(result.Body.Rows);
+        Assert.Equal(failBars ? 4 : 3, handler.Requests.Count);
+        Assert.False(string.IsNullOrWhiteSpace(result.Body.Message));
+        var json = JsonSerializer.Serialize(result.Body);
+        Assert.DoesNotContain(Key, json); Assert.DoesNotContain(Secret, json); Assert.DoesNotContain(Token, json);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unreadable_provider_json_returns_a_safe_response_diagnostic_for_either_request(bool failBars)
+    {
+        var body = "invalid-json-" + Key + Secret + Token;
+        var handler = new Handler((request, _) => Task.FromResult(Json(request.RequestUri!.AbsolutePath.EndsWith(failBars ? "bars" : "snapshots")
+            ? body : Snapshot)));
+        using var scanner = Scanner(handler);
+        var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
+        Assert.Equal(502, result.StatusCode);
+        Assert.Equal("provider-response", result.Body.ErrorCode);
+        Assert.Empty(result.Body.Rows);
+        Assert.Equal(failBars ? 2 : 1, handler.Requests.Count);
+        var json = JsonSerializer.Serialize(result.Body);
+        Assert.DoesNotContain(Key, json); Assert.DoesNotContain(Secret, json); Assert.DoesNotContain(Token, json);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Network_failures_are_distinct_from_invalid_data_and_never_expose_exception_text(bool failBars, bool ioFailure)
+    {
+        var handler = new Handler((request, _) => request.RequestUri!.AbsolutePath.EndsWith(failBars ? "bars" : "snapshots")
+            ? Task.FromException<HttpResponseMessage>(ioFailure ? new IOException(Key + Secret + Token) : new HttpRequestException(Key + Secret + Token))
+            : Task.FromResult(Json(Snapshot)));
+        using var scanner = Scanner(handler);
+        var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
+        Assert.Equal(502, result.StatusCode);
+        Assert.Equal("provider-network", result.Body.ErrorCode);
+        Assert.Empty(result.Body.Rows);
+        Assert.Equal(failBars ? 2 : 1, handler.Requests.Count);
         var json = JsonSerializer.Serialize(result.Body);
         Assert.DoesNotContain(Key, json); Assert.DoesNotContain(Secret, json); Assert.DoesNotContain(Token, json);
     }
@@ -392,15 +473,25 @@ public class AlpacaStockScannerTests
         for (var i = 0; i < 91; i++) last = await scanner.ScanAsync("A" + (char)('A' + i / 26) + (char)('A' + i % 26), Token, CancellationToken.None);
         Assert.Equal(180, handler.Requests.Count);
         Assert.Equal(429, last!.StatusCode); Assert.Empty(last.Body.Rows);
+        Assert.Equal("provider-rate-limit", last.Body.ErrorCode);
     }
 
-    [Fact]
-    public async Task Linked_timeout_is_generic_and_client_cancellation_is_propagated()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Linked_timeout_is_diagnosed_for_either_request_and_client_cancellation_is_propagated(bool failBars)
     {
-        var handler = new Handler(async (_, ct) => { await Task.Delay(Timeout.InfiniteTimeSpan, ct); return Json("{}"); });
+        var handler = new Handler(async (request, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith(failBars ? "bars" : "snapshots"))
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            return Json(Snapshot);
+        });
         using var scanner = Scanner(handler, new ShortTimeoutClock(Now));
         var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(502, result.StatusCode); Assert.Empty(result.Body.Rows);
+        Assert.Equal("provider-timeout", result.Body.ErrorCode);
+        Assert.Equal(failBars ? 2 : 1, handler.Requests.Count);
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => scanner.ScanAsync("NVDA", Token, cancelled.Token));
     }

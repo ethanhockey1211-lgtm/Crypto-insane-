@@ -24,5 +24,5 @@ public sealed record StockLatestQuote(double Bid, double Ask, double BidSize, do
 public sealed record StockMarketData(string Ticker, IReadOnlyList<StockMinuteBar> Bars, StockLatestTrade? LatestTrade,
     StockLatestQuote? LatestQuote, double? PreviousClose, double? DayVolume, bool HistoryComplete);
 public sealed record StockScanResponse(string Status, string Provider, string Feed, DateTimeOffset AsOf,
-    string? Message, IReadOnlyList<StockMarketData> Rows);
+    string? Message, IReadOnlyList<StockMarketData> Rows, string? ErrorCode = null);
 public sealed record StockScanResult(int StatusCode, StockScanResponse Body);
