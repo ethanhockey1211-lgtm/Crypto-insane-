@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { startConnection, startFeedPolling } from "@/lib/connection";
 import { FeedBanner } from "@/components/FeedBanner";
 import { MarketHeader } from "@/components/MarketHeader";
@@ -17,13 +18,22 @@ import { startHiddenMarkets } from "@/lib/hidden-markets";
 import { store as displayStore } from "@/lib/display";
 import { DisplayControls } from "@/components/DisplayControls";
 
+const StockWorkspace = dynamic(() => import("@/components/StockWorkspace"), { ssr: false, loading: () => <div className="panel p-6">Opening stock trading desk…</div> });
+
 type View = "scanner" | "heatmap" | "watchlist" | "alerts" | "paper" | "performance" | "backtest" | "tape";
 
 export default function Page() {
+  const [asset, setAsset] = useState<"crypto" | "stocks">("crypto");
   const [view, setView] = useState<View>("scanner");
   const [active, setActive] = useState<string | null>(null);
   const [list, add, remove] = useWatchlist();
 
+  useEffect(() => {
+    const syncAsset = () => setAsset(window.location.hash === "#stocks" ? "stocks" : "crypto");
+    syncAsset();
+    window.addEventListener("hashchange", syncAsset);
+    return () => window.removeEventListener("hashchange", syncAsset);
+  }, []);
   useEffect(() => {
     const stopVisibility = startHiddenMarkets();
     const stopDisplay = displayStore.start();
@@ -31,7 +41,7 @@ export default function Page() {
     const stopPolling = startFeedPolling();
     return () => { stopPolling(); stopVisibility(); stopDisplay(); };
   }, []);
-  const open = useCallback((s: string) => setActive(s), []);
+  const open = useCallback((s: string) => { setActive(s); setAsset("crypto"); window.location.hash = "crypto"; }, []);
   const close = useCallback(() => setActive(null), []);
   const toggleWatch = useCallback((s: string) => (list.includes(s) ? remove(s) : add(s)), [list, add, remove]);
 
@@ -46,10 +56,17 @@ export default function Page() {
 
   return (
     <div className="h-dvh flex flex-col gap-2 p-2 sm:p-3 max-w-[2400px] mx-auto">
+      <nav aria-label="Asset class" className="flex shrink-0 gap-2 items-center">
+        <a href="#crypto" aria-current={asset === "crypto" ? "page" : undefined} className={`control-button ${asset === "crypto" ? "!border-accent text-accent" : "text-ink-2"}`} onClick={() => setAsset("crypto")}>Crypto scanner</a>
+        <a href="#stocks" aria-current={asset === "stocks" ? "page" : undefined} className={`control-button ${asset === "stocks" ? "!border-accent text-accent" : "text-ink-2"}`} onClick={() => setAsset("stocks")}>Stocks & ETFs</a>
+      </nav>
+      {asset === "crypto" && <>
       <FeedBanner />
       <MarketHeader />
       <DisplayControls />
-      <EntryAlerts onOpen={open} />
+      </>}
+      <div className="shrink-0" hidden={asset === "stocks"}><EntryAlerts onOpen={open} /></div>
+      {asset === "stocks" ? <div className="flex-1 min-h-0"><StockWorkspace /></div> : <>
       <nav className="flex items-center gap-1 text-[14px] px-1 overflow-x-auto no-scrollbar shrink-0" aria-label="Views">
         {(["scanner", "heatmap", "watchlist", "alerts", "paper", "performance", "backtest", "tape"] as View[]).map((v) => (
           <button key={v} aria-current={view === v ? "page" : undefined} onClick={() => setView(v)} className={`shrink-0 px-3 py-2 rounded-[3px] ${view === v ? "bg-navy-3 text-ink" : "text-ink-2 hover:text-ink"}`}>{v === "scanner" ? "Find setups" : v === "performance" ? "Signal evidence" : v === "paper" ? "Paper trading" : v === "backtest" ? "Historical replay" : v}</button>
@@ -67,6 +84,7 @@ export default function Page() {
           )}
         </div>
       </div>
+      </>}
     </div>
   );
 }
