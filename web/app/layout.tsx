@@ -7,7 +7,7 @@ const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], var
 
 export const metadata: Metadata = {
   title: "TradingScanner",
-  description: "Real-time crypto setup scanner: market, opportunities, setup, execution, risk.",
+  description: "Kraken crypto scanner and US stock research workspace with charts, watchlists, risk planning and a trading journal.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#07090d" };

@@ -260,6 +260,10 @@ the API.
 
 ## Run the dashboard
 
+The **Stocks & ETFs** tab adds a free US stock research desk with TradingView charts and screeners,
+a personal Kraken availability list, share sizing, saved plans and a manual trading journal.
+Stock widgets can be delayed or exchange-limited. See [stock workspace usage and data coverage](docs/stock-workspace.md).
+
 Requires Node 22 and pnpm.
 
 ```bash
