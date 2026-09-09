@@ -260,9 +260,12 @@ the API.
 
 ## Run the dashboard
 
-The **Stocks & ETFs** tab adds a free US stock research desk with TradingView charts and screeners,
-a personal Kraken availability list, share sizing, saved plans and a manual trading journal.
-Stock widgets can be delayed or exchange-limited. See [stock workspace usage and data coverage](docs/stock-workspace.md).
+The **Stocks & ETFs** tab adds ranked stock setups from a connected personal Alpaca IEX feed,
+with entry zones, stop/target references, opt-in alerts and one-click transfer into the risk planner.
+[Connect the free stock data feed](docs/stock-signal-setup.md) using server-side credentials and a separate personal access code.
+TradingView charts/screeners, a personal Kraken availability list, saved plans and a manual journal
+remain available before connecting. Stock widgets can be delayed; Alpaca IEX covers one exchange.
+See [stock workspace usage and data coverage](docs/stock-workspace.md).
 
 Requires Node 22 and pnpm.
 

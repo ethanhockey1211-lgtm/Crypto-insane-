@@ -2,6 +2,8 @@
 
 Open **Stocks & ETFs** in the dashboard, or link directly to `/#stocks`. The stock workspace ships in the same static dashboard and Render deployment as the crypto scanner. No API key or new service is required.
 
+The optional **Stocks to review now** scanner adds automatic ranking, entry zones, stop/target references and opt-in alerts from a personal Alpaca IEX feed. [Connect the free data account](stock-signal-setup.md) to enable it. Its API credentials stay on the server; the browser uses a separate personal access code. **Use entry plan** loads the upper end of a qualified entry zone into the risk planner for conservative sizing. Account, cash and risk preferences carry across stock selections on this browser; price levels only load after your explicit action.
+
 ## Daily workflow
 
 1. Use the US stock screener to research movers and volume leaders. Its universe is TradingView's US listings, not an account-specific Kraken catalog.
@@ -25,4 +27,4 @@ The minute-resolution session clock uses the published [NYSE 2026–2028 holiday
 
 Frontend unit tests cover symbol validation, persisted record recovery, sizing constraints/costs, manual journal P/L and R, exchange holidays, early closes and daylight-saving boundaries. The production static export must build successfully. Browser checks exercise widget loading, stable chart instances during local edits, availability controls, notebook save/reload/export/import and narrow screens.
 
-Automated stock entries would require a separately documented equity data feed with appropriate real-time coverage. This free workspace intentionally identifies manual plans and delayed research data in the UI rather than presenting them as live trading signals.
+Automatic setup detection uses the separately configured Alpaca IEX feed, not TradingView widget data. The stock scanner requires fresh source trades and quotes, completed regular-session bars, acceptable IEX spreads and user-confirmed Kraken availability before presenting entry levels. Delayed embedded research, waiting candidates and expired entry snapshots remain clearly identified. No trading orders are sent by this application.

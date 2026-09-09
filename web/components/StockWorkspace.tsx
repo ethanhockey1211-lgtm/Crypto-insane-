@@ -4,6 +4,7 @@ import { defaultStockState, normalizeStockSymbol, parseStockState, STOCK_STORAGE
 import { getStockSession } from "@/lib/stock-session";
 import { StockMarketWidgets } from "@/components/StockMarketWidgets";
 import { StockTradeDesk } from "@/components/StockTradeDesk";
+import { StockEntryScanner, type ScannerPlan } from "@/components/StockEntryScanner";
 
 function SessionClock() {
   const [now, setNow] = useState<Date | null>(null);
@@ -36,6 +37,10 @@ export default function StockWorkspace() {
   const [notebookRevision, setNotebookRevision] = useState(0);
   const [backup, setBackup] = useState<StockWorkspaceState | null>(null);
   const [backupError, setBackupError] = useState("");
+  const [scannerPlan, setScannerPlan] = useState<ScannerPlan | null>(null);
+  const [focus, setFocus] = useState<{ id: string; revision: number } | null>(null);
+  useEffect(() => { if (focus) document.getElementById(focus.id)?.scrollIntoView({ block: "start" }); }, [focus]);
+  useEffect(() => { if (scannerPlan && scannerPlan.symbol !== state.selected) setScannerPlan(null); }, [scannerPlan, state.selected]);
   useEffect(() => {
     try { setState(parseStockState(localStorage.getItem(STOCK_STORAGE_KEY))); }
     catch { setStorageError("Browser storage is unavailable. Export your notebook to keep a copy before leaving."); }
@@ -89,17 +94,21 @@ export default function StockWorkspace() {
         <SessionClock />
       </div>
       <div className="flex flex-wrap items-center gap-3 mt-4 text-xs text-ink-2">
-        <span className="tag text-warn">Free stock data · delayed / exchange-limited</span>
+        <span className="tag">Setups: personal IEX feed · charts: TradingView</span>
         <span>Regular Kraken app · Minnesota</span>
         <a className="text-accent underline" href="https://www.kraken.com/prices/stocks" target="_blank" rel="noopener noreferrer">Browse Kraken stocks ↗</a>
         <button className="control-button sm:ml-auto" onClick={() => downloadNotebook(state)}>Export notebook</button>
         <label className="control-button cursor-pointer">Import notebook<input className="sr-only" aria-label="Import stock notebook" type="file" accept=".json,application/json" onChange={e => { void readBackup(e.target.files?.[0]); e.target.value = ""; }} /></label>
       </div>
-      <p className="text-xs text-ink-3 mt-3">Charts and screeners are supplied by TradingView. Confirm availability and the current price in Kraken. App orders outside market hours may queue for the next session. <a className="underline" href="https://support.kraken.com/articles/how-to-buy-and-sell-stocks-on-the-kraken-app" target="_blank" rel="noopener noreferrer">Kraken trading hours</a></p>
+      <p className="text-xs text-ink-3 mt-3">The automatic scanner uses your connected Alpaca IEX feed; embedded TradingView charts can be delayed. Confirm availability and the current price in Kraken. App orders outside market hours may queue for the next session. <a className="underline" href="https://support.kraken.com/articles/how-to-buy-and-sell-stocks-on-the-kraken-app" target="_blank" rel="noopener noreferrer">Kraken trading hours</a></p>
     </header>
     {storageError && <p role="alert" className="panel p-3 text-warn mb-3">{storageError}</p>}
     {backupError && <p role="alert" className="panel p-3 text-warn mb-3">{backupError}</p>}
     {backup && <div className="panel rounded-lg p-3 mb-3"><p className="mb-3">Import {backup.watchlist.length} stocks, {backup.plans.length} plans and {backup.journal.length} journal entries? This replaces the notebook on this browser. Export the current notebook first if you want to keep it.</p><div className="flex flex-wrap gap-2"><button className="control-button" onClick={() => { setState(backup); setBackup(null); setNotebookRevision(v => v + 1); }}>Replace notebook with backup</button><button className="control-button" onClick={() => setBackup(null)}>Cancel import</button></div></div>}
+    <StockEntryScanner watchlist={state.watchlist}
+      onOpen={symbol => { setState(old => ({ ...old, selected: symbol })); setFocus(old => ({ id: "selected-stock-detail", revision: (old?.revision ?? 0) + 1 })); }}
+      onUsePlan={plan => { setState(old => ({ ...old, selected: plan.symbol })); setScannerPlan(plan); setFocus(old => ({ id: "stock-plan-desk", revision: (old?.revision ?? 0) + 1 })); }}
+      onConfirm={symbol => setState(old => ({ ...old, watchlist: old.watchlist.map(item => item.symbol === symbol ? { ...item, availability: "confirmed" } : item) }))} />
     <div className="grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)] gap-3 items-start">
       <aside className="panel rounded-lg p-3 min-w-0" aria-label="Stock watchlist">
         <div className="flex items-center justify-between mb-2"><h2 className="font-semibold text-base">Research watchlist</h2><span className="num text-ink-3">{state.watchlist.length}</span></div>
@@ -128,7 +137,7 @@ export default function StockWorkspace() {
       </aside>
       <main className="min-w-0 grid gap-3">
         {selected ? <>
-          <section className="panel rounded-lg p-3 sm:p-4" aria-label="Selected stock availability">
+          <section id="selected-stock-detail" className="panel rounded-lg p-3 sm:p-4" aria-label="Selected stock availability">
             <div className="flex flex-wrap justify-between items-center gap-3"><div><div className="eyebrow">Selected stock</div><h2 className="text-xl font-semibold">{selected.symbol.split(":")[1]} <span className="font-normal text-sm text-ink-2">{selected.name}</span></h2><p className="text-xs text-ink-3">{selected.symbol}</p></div>
               <div className="flex flex-wrap gap-2"><button className="control-button" onClick={() => availability("unavailable")}>Hide unavailable stock</button><button className="control-button" onClick={removeSelected}>Remove from watchlist</button></div>
             </div>
@@ -137,11 +146,11 @@ export default function StockWorkspace() {
           </section>
           <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1.35fr)_minmax(380px,1fr)] gap-3 items-start min-w-0">
             <StockMarketWidgets symbol={selected.symbol} />
-            <StockTradeDesk key={`${selected.symbol}:${notebookRevision}`} symbol={selected.symbol} confirmed={selected.availability === "confirmed"} plans={state.plans} journal={state.journal}
+            <div id="stock-plan-desk" className="min-w-0"><StockTradeDesk key={`${selected.symbol}:${notebookRevision}`} symbol={selected.symbol} confirmed={selected.availability === "confirmed"} plans={state.plans} journal={state.journal} scannerPlan={scannerPlan?.symbol === selected.symbol ? scannerPlan : undefined}
               onSavePlan={plan => setState(old => ({ ...old, plans: [plan, ...old.plans].slice(0, 100) }))}
               onDeletePlan={id => setState(old => ({ ...old, plans: old.plans.filter(p => p.id !== id) }))}
               onAddTrade={trade => setState(old => ({ ...old, journal: [trade, ...old.journal].slice(0, 500) }))}
-              onDeleteTrade={id => setState(old => ({ ...old, journal: old.journal.filter(t => t.id !== id) }))} />
+              onDeleteTrade={id => setState(old => ({ ...old, journal: old.journal.filter(t => t.id !== id) }))} /></div>
           </div>
         </> : <section className="panel rounded-lg p-8 text-center"><h2 className="text-lg font-semibold mb-2">Choose a stock to open your desk</h2><p className="text-ink-2">Add a ticker or restore one from your hidden list. Your saved plans and journal remain in the exported notebook.</p></section>}
       </main>

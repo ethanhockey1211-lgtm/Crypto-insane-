@@ -1,0 +1,252 @@
+import { describe, expect, it } from "vitest";
+import { scanStockSetups, stockSetupIsCurrent, type StockBar, type StockMarketData, type StockScanResponse, type StockSetup } from "./stock-scanner";
+import type { StockItem } from "./stocks";
+
+const MINUTE = 60_000;
+const START = Date.parse("2026-09-09T13:30:00Z");
+const NOW = START + 22 * MINUTE + 5_000;
+const iso = (time: number) => new Date(time).toISOString();
+const ITEM: StockItem = { symbol: "NASDAQ:NVDA", name: "NVIDIA", availability: "confirmed" };
+function fixture(): StockMarketData {
+  const bars: StockBar[] = Array.from({ length: 22 }, (_, index) => {
+    const close = index < 15 ? 100.02 + (index % 3) * 0.02 : 100.1;
+    return { at: iso(START + index * MINUTE), open: close - 0.01, high: index < 15 ? 100.2 : 100.17,
+      low: index < 15 ? 99.9 : 99.98, close, volume: 1_000, vwap: close };
+  });
+  bars[21] = { at: iso(START + 21 * MINUTE), open: 100.12, high: 100.24, low: 100.1, close: 100.22, volume: 2_000, vwap: 100.19 };
+  return { ticker: "NVDA", bars, latestTrade: { price: 100.22, at: iso(NOW - 1_000) },
+    latestQuote: { bid: 100.21, ask: 100.23, bidSize: 5, askSize: 8, at: iso(NOW - 1_000) }, previousClose: 99,
+    dayVolume: 23_000, historyComplete: true };
+}
+function response(data = fixture(), asOf = NOW): StockScanResponse {
+  return { status: "ready", provider: "Alpaca", feed: "iex", asOf: iso(asOf), message: null, rows: [data] };
+}
+function scan(data = fixture(), now = NOW, item: StockItem = ITEM): StockSetup {
+  return scanStockSetups(response(data, now), [item], now)[0];
+}
+function noPlan(row: StockSetup) {
+  expect([row.entry, row.entryMax, row.stop, row.target, row.rewardRisk]).toEqual([null, null, null, null, null]);
+}
+
+describe("native IEX stock setup engine", () => {
+  it("produces a coherent confirmed opening-range entry from a completed candle, not a forming move", () => {
+    const row = scan();
+    expect(row.state, row.reasons.join(" ")).toBe("entry-zone");
+    expect(row.setup).toBe("Opening range breakout");
+    expect(row.price).toBe(100.22);
+    expect(row.stop!).toBeLessThan(row.entry!);
+    expect(row.price!).toBeGreaterThanOrEqual(row.entry!);
+    expect(row.price!).toBeLessThanOrEqual(row.entryMax!);
+    expect(row.target!).toBeGreaterThan(row.entryMax!);
+    expect(row.rewardRisk!).toBeGreaterThanOrEqual(2);
+    expect(row.relativeVolume).toBe(2);
+    expect(row.score).toBe(100);
+    expect(row.evidence.join(" ")).toContain("Heuristic ranking, not a win probability");
+    expect(row.evidence.join(" ")).toContain("bar-based IEX estimate");
+  });
+
+  it("does not trade an unconfirmed or unavailable Kraken stock even with a strong trigger", () => {
+    for (const availability of ["unconfirmed", "unavailable"] as const) {
+      const row = scan(fixture(), NOW, { ...ITEM, availability });
+      expect(row.state).toBe("unavailable"); noPlan(row);
+      expect(row.reasons.join(" ")).toContain("Kraken");
+    }
+  });
+
+  it("recognizes a completed VWAP reclaim independently of a resistance breakout", () => {
+    const data = fixture();
+    data.bars = data.bars.map(bar => ({ ...bar, open: 100, high: 100.4, low: 99.6, close: 100, vwap: 100 }));
+    data.bars[20] = { ...data.bars[20], open: 100, high: 100.1, low: 99.9, close: 99.98, vwap: 99.99 };
+    data.bars[21] = { ...data.bars[21], open: 99.98, high: 100.05, low: 99.95, close: 100.04, vwap: 100.02, volume: 1_500 };
+    data.latestTrade!.price = 100.04; data.latestQuote!.bid = 100.035; data.latestQuote!.ask = 100.045;
+    const row = scan(data); expect(row.state, row.reasons.join(" ")).toBe("entry-zone"); expect(row.setup).toBe("VWAP reclaim");
+  });
+
+  it("does not let an under-volume opening-range pattern hide a valid pullback entry", () => {
+    const data = fixture(); data.bars[21].volume = 1_050;
+    const row = scan(data);
+    expect(row.relativeVolume).toBe(1.05);
+    expect(row.state, row.reasons.join(" ")).toBe("entry-zone");
+    expect(row.setup).toBe("Pullback");
+    expect(row.evidence.join(" ")).toContain("prior pullback candle high");
+  });
+
+  it("can confirm a 20-bar resistance breakout without a verified opening range or EMA touch", () => {
+    const data = fixture();
+    data.bars[20] = { ...data.bars[20], open: 100.15, high: 100.18, low: 100.145, close: 100.16, vwap: 100.16 };
+    data.bars.splice(7, 1);
+    const row = scan(data);
+    expect(row.state, row.reasons.join(" ")).toBe("entry-zone"); expect(row.setup).toBe("Breakout");
+  });
+
+  it.each([46_000, -5_001])("rejects stale or materially future trades (%i ms age)", age => {
+    const data = fixture(); data.latestTrade!.at = iso(NOW - age);
+    const row = scan(data); expect(row.state).toBe("blocked"); expect(row.price).toBeNull(); noPlan(row);
+  });
+
+  it("allows at most five seconds of upstream clock skew but never uses a forming candle", () => {
+    const data = fixture(); data.latestTrade!.at = iso(NOW + 5_000); data.latestQuote!.at = iso(NOW + 5_000);
+    data.bars.push({ ...data.bars.at(-1)!, at: iso(START + 22 * MINUTE), high: 150, close: 149, volume: 999_999 });
+    data.bars.push({ ...data.bars.at(-1)!, at: iso(START + 23 * MINUTE) });
+    const row = scan(data); expect(row.state).toBe("entry-zone"); expect(row.barAt).toBe(iso(START + 21 * MINUTE)); expect(row.relativeVolume).toBe(2);
+  });
+
+  it.each([61_000, -5_001])("blocks stale or future whole-scan responses (%i ms age)", age => {
+    const row = scanStockSetups(response(fixture(), NOW - age), [ITEM], NOW)[0];
+    expect(row.state).toBe("blocked"); noPlan(row); expect(row.reasons.join(" ")).toContain("response");
+  });
+
+  it("requires a usable two-sided fresh quote and caps the IEX spread", () => {
+    const mutations: ((data: StockMarketData) => void)[] = [
+      data => { data.latestQuote = null; }, data => { data.latestQuote!.at = iso(NOW - 45_001); },
+      data => { data.latestQuote!.at = iso(NOW + 5_001); }, data => { data.latestQuote!.bid = 0; },
+      data => { data.latestQuote!.askSize = 0; }, data => { data.latestQuote!.bidSize = NaN; },
+      data => { data.latestQuote!.ask = 100; }, data => { data.latestQuote!.ask = 101; },
+    ];
+    for (const mutate of mutations) {
+      const data = fixture(); mutate(data); const row = scan(data);
+      expect(row.state, JSON.stringify(data.latestQuote)).toBe("blocked"); noPlan(row);
+    }
+  });
+
+  it("does not turn nonfinite or malformed prices into a current price or plan", () => {
+    for (const price of [0, -1, NaN, Infinity]) {
+      const data = fixture(); data.latestTrade!.price = price;
+      const row = scan(data); expect(row.price).toBeNull(); expect(row.state).toBe("blocked"); noPlan(row);
+    }
+    const data = fixture(); data.previousClose = NaN; expect(scan(data).changePct).toBeNull();
+    data.bars[15].high = NaN;
+    const row = scan(data); expect(row.state).toBe("blocked"); expect(row.reasons.join(" ")).toContain("Invalid"); noPlan(row);
+  });
+
+  it("blocks pre-open, holidays, early close, and unknown calendars without emitting plans", () => {
+    for (const when of ["2026-09-09T13:29:00Z", "2026-09-07T14:00:00Z", "2026-11-27T18:01:00Z", "2029-09-10T14:00:00Z"]) {
+      const now = Date.parse(when); const row = scan(fixture(), now);
+      expect(row.state).toBe("blocked"); noPlan(row); expect(row.reasons.join(" ")).toContain("scheduled regular stock session");
+    }
+  });
+
+  it("requires a recent completed bar and excludes previous-session data", () => {
+    const data = fixture(); data.bars = data.bars.map(bar => ({ ...bar, at: iso(Date.parse(bar.at) - 24 * 60 * MINUTE) }));
+    let row = scan(data); expect(row.state).toBe("blocked"); expect(row.barAt).toBeNull(); noPlan(row);
+    row = scan(fixture(), NOW + 121_000); expect(row.state).toBe("blocked");
+    expect(row.reasons.join(" ")).toContain("120 seconds"); noPlan(row);
+  });
+
+  it("needs every opening minute for an opening-range label, without inventing missing IEX bars", () => {
+    const data = fixture(); data.bars.splice(7, 1);
+    const row = scan(data);
+    expect(row.state, row.reasons.join(" ")).toBe("entry-zone");
+    expect(row.setup).not.toBe("Opening range breakout");
+    expect(row.evidence.join(" ")).toContain("Opening range is unconfirmed");
+    expect(row.relativeVolume).toBe(2);
+  });
+
+  it("requires adjacent trigger bars and bounds the latest 21 observations to 30 minutes", () => {
+    const gap = fixture(); gap.bars.splice(-2, 1);
+    let row = scan(gap); expect(row.state).toBe("blocked"); expect(row.reasons.join(" ")).toContain("not adjacent"); noPlan(row);
+    const sparse = fixture(); sparse.bars = sparse.bars.map((bar, index) => ({ ...bar, at: iso(START + (index < 20 ? index * 2 : 40 + index - 20) * MINUTE) }));
+    const now = START + 42 * MINUTE + 5_000; sparse.latestTrade!.at = iso(now); sparse.latestQuote!.at = iso(now);
+    row = scan(sparse, now); expect(row.state).toBe("blocked"); expect(row.reasons.join(" ")).toContain("more than 30 minutes"); noPlan(row);
+  });
+
+  it("requires complete session history and labels OHLC fallback VWAP as an estimate", () => {
+    const data = fixture(); data.historyComplete = false;
+    let row = scan(data); expect(row.state).toBe("blocked"); expect(row.vwap).toBeNull(); noPlan(row);
+    data.historyComplete = true; data.bars[3].vwap = null;
+    row = scan(data); expect(row.state).toBe("entry-zone"); expect(row.evidence.join(" ")).toContain("typical (high + low + close) / 3");
+    data.bars.shift(); row = scan(data);
+    expect(row.state, row.reasons.join(" ")).toBe("entry-zone");
+    expect(row.setup).not.toBe("Opening range breakout"); expect(row.vwap).not.toBeNull();
+    expect(row.evidence.join(" ")).toContain("Opening range is unconfirmed");
+  });
+
+  it("deduplicates identical observations but rejects ambiguous corrections", () => {
+    const data = fixture(); data.bars.push({ ...data.bars[0] }); data.bars.reverse();
+    expect(scan(data)).toEqual(scan());
+    data.bars.push({ ...data.bars.find(bar => bar.at === iso(START))!, volume: 1_001 });
+    const row = scan(data); expect(row.state).toBe("blocked"); noPlan(row);
+  });
+
+  it("returns extended and watch states without fabricating an executable plan", () => {
+    const extended = fixture(); extended.latestTrade!.price = 100.6; extended.latestQuote!.bid = 100.59; extended.latestQuote!.ask = 100.61;
+    let row = scan(extended); expect(row.state).toBe("extended"); expect(row.reasons.join(" ")).toContain("rather than chase"); noPlan(row);
+    const watch = fixture(); watch.bars[21] = { ...watch.bars[20], at: iso(START + 21 * MINUTE), close: 100.12, open: 100.11 };
+    row = scan(watch); expect(row.state).toBe("watch"); expect(row.reasons.join(" ")).toContain("wait"); noPlan(row);
+    const quiet = fixture(); quiet.bars[21].volume = 500;
+    row = scan(quiet); expect(row.state).toBe("watch"); expect(row.reasons.join(" ")).toContain("volume"); noPlan(row);
+  });
+
+  it("uses the IEX ask as well as the last trade to prevent a misleading entry-zone label", () => {
+    const data = fixture(); data.latestQuote!.ask = 100.4;
+    let row = scan(data); expect(row.state).toBe("extended"); noPlan(row);
+    data.latestQuote!.bid = 100.1; data.latestQuote!.ask = 100.12;
+    row = scan(data); expect(row.state).toBe("watch"); noPlan(row);
+  });
+
+  it("rejects mismatched or duplicate response tickers and non-US watchlist symbols", () => {
+    const data = fixture(); data.ticker = "AMD";
+    let row = scan(data); expect(row.state).toBe("blocked"); expect(row.price).toBeNull(); noPlan(row);
+    const duplicate = response(); duplicate.rows.push(fixture());
+    row = scanStockSetups(duplicate, [ITEM], NOW)[0]; expect(row.state).toBe("blocked"); noPlan(row);
+    row = scan(fixture(), NOW, { ...ITEM, symbol: "KRAKEN:NVDA" }); expect(row.state).toBe("blocked"); noPlan(row);
+  });
+
+  it("sorts actionable states before research and blocked states, with deterministic symbol ties", () => {
+    const a = fixture(); a.ticker = "AAPL";
+    const b = fixture(); b.ticker = "MSFT";
+    const c = fixture(); c.ticker = "AMD"; c.latestTrade!.at = iso(NOW - MINUTE);
+    const payload = response(); payload.rows = [b, a, c];
+    const list = ["MSFT", "AMD", "AAPL"].map(ticker => ({ ...ITEM, symbol: `NASDAQ:${ticker}` }));
+    const original = JSON.stringify({ payload, list });
+    const rows = scanStockSetups(payload, list, NOW);
+    expect(rows.map(row => row.ticker)).toEqual(["AAPL", "MSFT", "AMD"]);
+    expect(JSON.stringify({ payload, list })).toBe(original);
+  });
+});
+
+describe("displayed stock entry freshness", () => {
+  it("expires a held plan when the trade or quote reaches 45 seconds without requiring a new scan", () => {
+    const payload = response(), setup = scanStockSetups(payload, [ITEM], NOW)[0];
+    expect(stockSetupIsCurrent(setup, payload, NOW + 44_000)).toBe(true);
+    expect(stockSetupIsCurrent(setup, payload, NOW + 44_001)).toBe(false);
+    payload.rows[0].latestQuote!.at = iso(NOW + 44_000);
+    expect(stockSetupIsCurrent(setup, payload, NOW + 44_001)).toBe(false); // trade alone has expired
+    payload.rows[0].latestTrade!.at = iso(NOW + 44_000); payload.rows[0].latestQuote!.at = iso(NOW - 1_000);
+    expect(stockSetupIsCurrent(setup, payload, NOW + 44_001)).toBe(false); // quote alone has expired
+  });
+
+  it("independently enforces response and completed-bar expiry and rejects a forming bar", () => {
+    const payload = response(), setup = scanStockSetups(payload, [ITEM], NOW)[0];
+    payload.asOf = iso(NOW - 60_000); expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(true);
+    payload.asOf = iso(NOW - 60_001); expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(false);
+    const lastFresh = NOW + 115_000;
+    payload.asOf = iso(lastFresh); payload.rows[0].latestTrade!.at = iso(lastFresh); payload.rows[0].latestQuote!.at = iso(lastFresh);
+    expect(stockSetupIsCurrent(setup, payload, lastFresh)).toBe(true);
+    expect(stockSetupIsCurrent(setup, payload, lastFresh + 1)).toBe(false);
+    expect(stockSetupIsCurrent({ ...setup, barAt: iso(Math.floor(lastFresh / MINUTE) * MINUTE) }, payload, lastFresh)).toBe(false);
+  });
+
+  it("withdraws a plan when the feed, symbol, quote, price zone, or session no longer qualifies", () => {
+    const setup = scan();
+    expect(stockSetupIsCurrent(setup, null, NOW)).toBe(false);
+    expect(stockSetupIsCurrent({ ...setup, state: "watch" }, response(), NOW)).toBe(false);
+    expect(stockSetupIsCurrent({ ...setup, ticker: "AMD" }, response(), NOW)).toBe(false);
+    expect(stockSetupIsCurrent(setup, { ...response(), status: "error" }, NOW)).toBe(false);
+    expect(stockSetupIsCurrent(setup, response(), Date.parse("2026-09-09T20:00:00Z"))).toBe(false);
+    const payload = response(); payload.rows[0].latestQuote!.ask = setup.entryMax! + 0.01;
+    expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(false);
+    payload.rows[0].latestQuote!.ask = setup.entry! - 0.01;
+    expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(false);
+    payload.rows[0].latestQuote = null;
+    expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(false);
+  });
+
+  it("rejects materially future timestamps while tolerating five seconds of clock skew", () => {
+    const setup = scan(), payload = response();
+    payload.asOf = iso(NOW + 5_000); payload.rows[0].latestTrade!.at = iso(NOW + 5_000); payload.rows[0].latestQuote!.at = iso(NOW + 5_000);
+    expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(true);
+    payload.rows[0].latestTrade!.at = iso(NOW + 5_001);
+    expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(false);
+  });
+});
