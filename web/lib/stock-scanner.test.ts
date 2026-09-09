@@ -26,6 +26,7 @@ function scan(data = fixture(), now = NOW, item: StockItem = ITEM): StockSetup {
 }
 function noPlan(row: StockSetup) {
   expect([row.entry, row.entryMax, row.stop, row.target, row.rewardRisk]).toEqual([null, null, null, null, null]);
+  expect([row.details?.target1, row.details?.target2]).toEqual([null, null]);
 }
 
 describe("native IEX stock setup engine", () => {
@@ -202,6 +203,144 @@ describe("native IEX stock setup engine", () => {
     const rows = scanStockSetups(payload, list, NOW);
     expect(rows.map(row => row.ticker)).toEqual(["AAPL", "MSFT", "AMD"]);
     expect(JSON.stringify({ payload, list })).toBe(original);
+  });
+});
+
+describe("explainable stock setup details", () => {
+  it("accounts for every point in the unchanged 100-point entry checklist", () => {
+    const row = scan(), details = row.details!;
+    expect(details.scoreFactors.map(factor => factor.possible)).toEqual([20, 15, 10, 15, 15, 10, 15]);
+    expect(details.scoreFactors.map(factor => factor.earned)).toEqual([20, 15, 10, 15, 15, 10, 15]);
+    expect(details.scoreFactors.reduce((sum, factor) => sum + factor.earned, 0)).toBe(row.score);
+    expect(details.triggerPrice).toBe(100.2);
+    expect(details.triggerConfirmed).toBe(true);
+    expect(details.thesis).toContain("last completed close was 100.22");
+    expect(details.thesis).toContain("2.00×");
+    expect(details.confirmation).toContain("at least 1.10×");
+    expect(details.confirmation).toContain("09:30–09:44 ET");
+    expect(details.trendLabel).toContain("Upward");
+    expect(details.invalidation).toContain(row.stop!.toFixed(2));
+    expect(details.invalidation).toContain("three-bar low of 99.98");
+  });
+
+  it("shows unmet trend, VWAP, pattern and zone checks rather than hiding them", () => {
+    const data = fixture();
+    data.bars = data.bars.map((bar, index) => {
+      const close = 100 - index * 0.1;
+      return { ...bar, open: close + 0.02, close, high: close + 0.05, low: close - 0.05, vwap: close, volume: 1_000 };
+    });
+    data.latestTrade!.price = 97.9; data.latestQuote!.bid = 97.895; data.latestQuote!.ask = 97.905;
+    const row = scan(data), details = row.details!;
+    expect(row.state).toBe("watch"); noPlan(row);
+    expect(row.score).toBe(30);
+    expect(details.scoreFactors.map(factor => factor.earned)).toEqual([0, 0, 5, 0, 15, 10, 0]);
+    expect(details.scoreFactors.reduce((sum, factor) => sum + factor.earned, 0)).toBe(row.score);
+    expect(details.scoreFactors.filter(factor => factor.earned === 0).every(factor => factor.detail.length > 30)).toBe(true);
+    expect(details.triggerPrice).toBeNull();
+    expect(details.triggerConfirmed).toBe(false);
+    expect(details.confirmation).toContain("No conditional trigger");
+  });
+
+  it("explains partial volume and spread points, and zero points below the thresholds", () => {
+    const partialVolume = fixture(); partialVolume.bars[21].volume = 1_050;
+    const partialSpread = fixture(); partialSpread.latestQuote!.bid = 100;
+    const lowVolume = fixture(); lowVolume.bars[21].volume = 500;
+    const wideSpread = fixture(); wideSpread.latestQuote!.ask = 101;
+    for (const [data, factor, expected] of [
+      [partialVolume, "IEX relative volume", 5], [partialSpread, "IEX quoted spread", 5],
+      [lowVolume, "IEX relative volume", 0], [wideSpread, "IEX quoted spread", 0],
+    ] as const) {
+      const row = scan(data), factors = row.details!.scoreFactors;
+      expect(factors.find(value => value.label === factor)!.earned).toBe(expected);
+      expect(factors.reduce((sum, value) => sum + value.earned, 0)).toBe(row.score);
+      expect(factors.reduce((sum, value) => sum + value.possible, 0)).toBe(100);
+    }
+  });
+
+  it("supplies precisely labeled observed levels, with no forecast disguised as a level", () => {
+    const row = scan(), levels = row.details!.levels;
+    expect(levels).toContainEqual({ label: "Recent three completed IEX bars' low", price: 99.98, kind: "support" });
+    expect(levels).toContainEqual({ label: "Preceding 20 observed IEX bars' high", price: 100.2, kind: "resistance" });
+    expect(levels).toContainEqual({ label: "Verified 09:30–09:44 ET opening-range high", price: 100.2, kind: "resistance" });
+    expect(levels).toContainEqual({ label: "Estimated IEX session VWAP", price: row.vwap, kind: "reference" });
+    expect(levels).toContainEqual({ label: "EMA9 of completed observed IEX bars", price: row.ema9, kind: "reference" });
+    expect(levels).toContainEqual({ label: "EMA20 of completed observed IEX bars", price: row.ema20, kind: "reference" });
+    expect(levels.every(level => Number.isFinite(level.price) && level.price > 0)).toBe(true);
+    expect(levels.some(level => level.price === row.target)).toBe(false);
+  });
+
+  it.each([1, 0.001, 1_000])("places 1R and 2R detail targets beyond the upper entry using the structural stop (scale %s)", scale => {
+    const data = fixture();
+    data.bars = data.bars.map(bar => ({ ...bar, open: bar.open * scale, high: bar.high * scale, low: bar.low * scale,
+      close: bar.close * scale, vwap: bar.vwap === null ? null : bar.vwap * scale }));
+    data.latestTrade!.price *= scale; data.latestQuote!.bid *= scale; data.latestQuote!.ask *= scale;
+    const row = scan(data), details = row.details!;
+    expect(row.state).toBe("entry-zone");
+    expect(details.target2).toBe(row.target);
+    expect(details.target1!).toBeGreaterThan(row.entryMax!);
+    expect(details.target1!).toBeLessThan(details.target2!);
+    const upperRisk = row.entryMax! - row.stop!;
+    expect((details.target1! - row.entryMax!) / upperRisk).toBeCloseTo(1, 8);
+    expect((details.target2! - row.entryMax!) / upperRisk).toBeCloseTo(2, 8);
+    // Lower-zone sizing would overstate the reward: both milestones use the same conservative upper entry.
+    expect((details.target1! - row.entry!) / (row.entry! - row.stop!)).toBeGreaterThan(1);
+  });
+
+  it("keeps a watch trigger conditional and never publishes target details until entry eligibility passes", () => {
+    const data = fixture(); data.bars[21].volume = 500;
+    const watch = scan(data);
+    expect(watch.state).toBe("watch"); noPlan(watch);
+    expect(watch.details!.triggerConfirmed).toBe(true);
+    expect(watch.details!.triggerPrice).toBe(100.2);
+    expect(watch.details!.confirmation).toContain("pattern confirmation alone does not qualify an entry");
+    expect(watch.details!.cautions.join(" ")).toContain("Await IEX closed-bar volume");
+    const unavailable = scan(fixture(), NOW, { ...ITEM, availability: "unconfirmed" });
+    expect(unavailable.details!.triggerConfirmed).toBe(true); noPlan(unavailable);
+    expect(unavailable.details!.cautions.join(" ")).toContain("Confirm this stock is available in your Kraken account");
+    const near = fixture(); near.bars[21] = { ...near.bars[20], at: iso(START + 21 * MINUTE), close: 100.12, open: 100.11 };
+    const conditional = scan(near);
+    expect(conditional.state).toBe("watch"); noPlan(conditional);
+    expect(conditional.details!.triggerConfirmed).toBe(false);
+    expect(conditional.details!.triggerPrice).not.toBeNull();
+    expect(conditional.details!.confirmation).toContain("Still required");
+  });
+
+  it("carries stale and sparse observations into cautions and does not fabricate a missing opening range", () => {
+    const stale = fixture(); stale.latestTrade!.at = iso(NOW - 46_000);
+    const blocked = scan(stale); expect(blocked.state).toBe("blocked"); noPlan(blocked);
+    expect(blocked.details!.cautions.join(" ")).toContain("stale");
+    expect(blocked.details!.scoreFactors.find(factor => factor.label === "Fresh trade and quote")!.earned).toBe(0);
+    expect(blocked.details!.scoreFactors.reduce((sum, factor) => sum + factor.earned, 0)).toBe(blocked.score);
+    const sparse = fixture(); sparse.bars.splice(7, 1);
+    const row = scan(sparse);
+    expect(row.details!.cautions.join(" ")).toContain("21 completed bars cover 22 one-minute slots");
+    expect(row.details!.cautions.join(" ")).toContain("opening range is unconfirmed");
+    expect(row.details!.levels.some(level => level.label.includes("opening-range"))).toBe(false);
+  });
+
+  it("identifies an overhead observed high as a reference instead of a promised barrier", () => {
+    const data = fixture();
+    data.bars = data.bars.map(bar => ({ ...bar, open: 100, high: 100.4, low: 99.6, close: 100, vwap: 100 }));
+    data.bars[20] = { ...data.bars[20], open: 100, high: 100.1, low: 99.9, close: 99.98, vwap: 99.99 };
+    data.bars[21] = { ...data.bars[21], open: 99.98, high: 100.05, low: 99.95, close: 100.04, vwap: 100.02, volume: 1_500 };
+    data.latestTrade!.price = 100.04; data.latestQuote!.bid = 100.035; data.latestQuote!.ask = 100.045;
+    const row = scan(data); expect(row.state).toBe("entry-zone");
+    expect(row.details!.cautions.join(" ")).toContain("high at 100.40");
+    expect(row.details!.cautions.join(" ")).toContain("not a guaranteed price barrier");
+  });
+
+  it("provides a zero-point unassessed rubric and no levels when usable history or matching data is absent", () => {
+    const data = fixture(); data.bars = [];
+    const noMatch = response(); noMatch.rows = [];
+    for (const row of [scan(data), scanStockSetups(noMatch, [ITEM], NOW)[0]]) {
+      expect(row.state).toBe("blocked"); noPlan(row);
+      expect(row.score).toBe(0);
+      expect(row.details!.scoreFactors.reduce((sum, factor) => sum + factor.possible, 0)).toBe(100);
+      expect(row.details!.scoreFactors.every(factor => factor.earned === 0 && factor.detail.includes("Not assessed"))).toBe(true);
+      expect(row.details!.levels).toEqual([]);
+      expect(row.details!.triggerPrice).toBeNull();
+      expect(row.details!.invalidation).toContain("No active entry plan");
+    }
   });
 });
 

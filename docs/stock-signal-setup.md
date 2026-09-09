@@ -32,11 +32,25 @@ The scanner refreshes every **30 seconds**. It needs at least **21 closed regula
 
 Stock alerts are opt-in and use a **ten-minute cooldown per symbol**. They are reminders to inspect a setup while the app is open. The scanner's evidence points are heuristic rankings, not a validated win probability or a promise of profit.
 
+## Read and compare a trade brief
+
+The opportunity board compares the same confirmed-first watchlist, with sorts for **setup quality**, **net reward/risk**, and **profit if the target is reached**. Its detailed brief explains the observed trigger, supporting evidence, entry zone, invalidation level and reasons to wait. Technical evidence does not establish a news catalyst; review the stock's news separately.
+
+The upper end of the entry zone is used for conservative sizing. Each plan includes a **1R checkpoint** and the existing **2R target**, measured before costs from that upper entry to the stop reference. These are fixed planning scenarios, not predicted prices or resistance levels. A current setup must also offer at least **1.5R after the cost buffer** to qualify as an opportunity; increasing the cost estimate can remove it from that group.
+
+Enter **account value, available cash, risk percentage and round-trip cost per share** to compare whole-share plans within your limits. These four budget fields are saved locally and shared with the manual planner. The cost buffer estimates spread, slippage and fees; it is not a quoted Kraken charge. Without an account budget, comparisons remain per share. Each stock is an alternative using the same cash and risk budget: adding the displayed profits together does not describe an affordable portfolio.
+
+**Profit if target reached** assumes the full position exits at that target, after the entered cost buffer. **Planned loss at stop** assumes an exit at the stop reference. **Break-even win rate** is the rate required by those two outcomes: planned loss divided by planned loss plus target profit. It is an arithmetic threshold, not a measured win rate or a probability that this trade will succeed. A larger potential payoff alone does not make a setup more likely to work.
+
+Your selected stock stays selected between refreshes so you can read its brief. Rankings update with new scan snapshots; the one-second age check only expires eligibility. Pausing or a data failure leaves references visible but disables using them as a current entry plan. **Use entry plan** copies levels into the manual planner; later scans do not overwrite levels you edit there.
+
+Orders remain manual in Kraken. A displayed stop is a planning reference; the scanner does not attach a stop order or monitor an actual position. Execution can differ from the displayed price, and a stop price does not guarantee the loss amount. [SEC explanation of order execution and stops](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-14)
+
 ## What the data means
 
 Free Alpaca data covers **IEX, one US exchange**. Its quotes are not the consolidated national best bid and offer (NBBO), and its volume is not total US market volume. The scanner checks source trade/quote times and quote validity; a successful refresh alone does not make an old quote current. [Alpaca coverage and feed details](https://docs.alpaca.markets/us/docs/market-data-faq)
 
-The engine's **estimated IEX session VWAP** is calculated from the regular session's completed one-minute bars. It excludes premarket and after-hours bars. This bar-weighted estimate can differ from tick-based VWAP because Alpaca's internal VWAP volume can differ from the bar's reported volume. It is not Kraken's execution price. [Alpaca's bar aggregation rules](https://docs.alpaca.markets/us/docs/market-data-faq#how-are-bars-aggregated)
+The engine's **estimated IEX session VWAP** is calculated from the regular session's completed one-minute bars. It excludes premarket and after-hours bars. This bar-weighted estimate can differ from tick-based VWAP because Alpaca's internal VWAP volume can differ from the bar's reported volume. The volume ratio compares the last completed IEX minute with the prior 20 observed bars, not historical daily volume. These are IEX references, not Kraken execution prices. [Alpaca's bar aggregation rules](https://docs.alpaca.markets/us/docs/market-data-faq#how-are-bars-aggregated)
 
 Review each plan and the final quote in Kraken before placing an order. Kraken documents regular app hours as **9:30 a.m.–4 p.m. Eastern**, normally **8:30 a.m.–3 p.m. Central**, with exchange holidays and early closes. Market orders submitted outside regular hours may queue for the next opening. [Buying and selling stocks in the Kraken app](https://support.kraken.com/articles/how-to-buy-and-sell-stocks-on-the-kraken-app)
 

@@ -261,7 +261,10 @@ the API.
 ## Run the dashboard
 
 The **Stocks & ETFs** tab adds ranked stock setups from a connected personal Alpaca IEX feed,
-with entry zones, stop/target references, opt-in alerts and one-click transfer into the risk planner.
+with detailed trade briefs explaining entry zones, supporting evidence, invalidation and target scenarios.
+Compare setup quality, net reward/risk and profit if the target is reached using a budget shared with
+the manual planner. Current opportunities require at least 1.5R after the cost buffer; rankings and
+conditional payoffs do not predict profit. Opt-in alerts and one-click plan transfer support manual review.
 [Connect the free stock data feed](docs/stock-signal-setup.md) using server-side credentials and a separate personal access code.
 TradingView charts/screeners, a personal Kraken availability list, saved plans and a manual journal
 remain available before connecting. Stock widgets can be delayed; Alpaca IEX covers one exchange.

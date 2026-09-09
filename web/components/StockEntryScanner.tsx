@@ -5,9 +5,12 @@ import { scanStockSetups, stockSetupIsCurrent, type StockScanResponse, type Stoc
 import type { StockItem, StockPlan } from "@/lib/stocks";
 import { StockEntryAlertTracker } from "@/lib/stock-entry-alerts";
 import { stockFeedError } from "@/lib/stock-feed-error";
+import { buildStockOpportunities } from "@/lib/stock-opportunities";
+import { StockOpportunityBoard } from "@/components/StockOpportunityBoard";
+import type { StockRiskDraft } from "@/components/useStockRiskSettings";
 
 export interface ScannerPlan {
-  id: string; symbol: string; setup: StockPlan["setup"]; entry: number; stop: number; target: number; asOf: string;
+  id: string; symbol: string; setup: StockPlan["setup"]; entry: number; stop: number; target: number; asOf: string; notes?: string;
 }
 const ACCESS_KEY = "kraken.stock-scanner.access.v1";
 const ALERT_KEY = "kraken.stock-scanner.alerts.v1";
@@ -64,15 +67,15 @@ function useStockFeed(symbols: string, access: string, paused: boolean, refresh:
   return { status, data, error, loading };
 }
 
-export function StockEntryScanner({ watchlist, onOpen, onUsePlan, onConfirm }: {
+export function StockEntryScanner({ watchlist, onOpen, onUsePlan, onConfirm, risk, onRiskChange }: {
   watchlist: StockItem[]; onOpen: (symbol: string) => void; onUsePlan: (plan: ScannerPlan) => void; onConfirm: (symbol: string) => void;
+  risk: StockRiskDraft; onRiskChange: React.Dispatch<React.SetStateAction<StockRiskDraft>>;
 }) {
   const [access, setAccess] = useState("");
   const [draftAccess, setDraftAccess] = useState("");
   const [paused, setPaused] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(0);
-  const [showAll, setShowAll] = useState(false);
   const [alerts, setAlerts] = useState(false);
   const [sound, setSound] = useState(false);
   const [notice, setNotice] = useState("");
@@ -96,7 +99,8 @@ export function StockEntryScanner({ watchlist, onOpen, onUsePlan, onConfirm }: {
   const setups = useMemo(() => feed.data ? scanStockSetups(feed.data, candidates, Date.now()) : [], [feed.data, candidates]);
   const enabled = !paused && !feed.error && feed.status?.configured === true && !!access;
   const actionable = useMemo(() => setups.filter(s => enabled && current(s, feed.data, now)), [setups, enabled, feed.data, now]);
-  const displayed = showAll ? setups : setups.slice(0, 6);
+  const opportunitySettings = useMemo(() => ({ account: Number(risk.account), cash: Number(risk.cash), riskPct: Number(risk.riskPct), costPerShare: risk.cost.trim() === "" ? NaN : Number(risk.cost) }), [risk]);
+  const opportunities = useMemo(() => buildStockOpportunities(setups, feed.data, Date.now(), opportunitySettings), [setups, feed.data, opportunitySettings]);
   const availabilitySignature = candidates.map(s => `${s.symbol}:${s.availability}`).join(",");
   useEffect(() => { tracker.current.resetBaseline(); observedEntries.current.clear(); }, [availabilitySignature]);
   useEffect(() => {
@@ -132,13 +136,14 @@ export function StockEntryScanner({ watchlist, onOpen, onUsePlan, onConfirm }: {
     try { audio.current ??= new AudioContext(); await audio.current.resume(); setSound(true); setNotice("Stock alert sound is armed for this visit."); }
     catch { setNotice("Sound is unavailable. In-page stock alerts still work."); }
   };
-  const usePlan = useCallback((setup: StockSetup) => {
+  const usePlan = useCallback((setup: StockSetup, notes: string) => {
     if (!enabled || !current(setup, feed.data, Date.now()) || !setup.setup || setup.entry == null || setup.stop == null || setup.target == null) return;
-    onUsePlan({ id: crypto.randomUUID(), symbol: setup.symbol, setup: setup.setup, entry: setup.entryMax ?? setup.entry, stop: setup.stop, target: setup.target, asOf: feed.data!.asOf });
-  }, [enabled, feed.data, onUsePlan]);
+    if (!buildStockOpportunities([setup], feed.data, Date.now(), opportunitySettings)[0]?.eligible) return;
+    onUsePlan({ id: crypto.randomUUID(), symbol: setup.symbol, setup: setup.setup, entry: setup.entryMax ?? setup.entry, stop: setup.stop, target: setup.target, asOf: feed.data!.asOf, notes });
+  }, [enabled, feed.data, onUsePlan, opportunitySettings]);
   return <section className="panel rounded-lg p-3 sm:p-4 mb-3" aria-label="Automatic stock setups">
     <div className="flex flex-wrap justify-between items-start gap-3">
-      <div><div className="eyebrow !text-accent">Automatic stock scanner · Alpaca IEX</div><h2 className="text-xl sm:text-2xl font-semibold mt-1">Stocks to review now</h2><p className="text-sm text-ink-2 mt-1">Ranked setups with entry, stop and target when the checks pass.</p></div>
+      <div><div className="eyebrow !text-accent">Automatic stock scanner · Alpaca IEX</div><h2 className="text-xl sm:text-2xl font-semibold mt-1">Stocks to review now</h2><p className="text-sm text-ink-2 mt-1">Find a setup, understand the evidence, and compare its entry plan with your budget.</p></div>
       <span className={`tag ${actionable.length ? "text-accent" : "text-ink-2"}`}>{paused ? "Paused · no stock alerts" : !access ? "Connect personal data" : feed.error ? "Data unavailable" : `${actionable.length} in entry zone`}</span>
     </div>
     <p className="text-xs text-ink-3 mt-3">Live IEX is one US exchange. Its quotes, volume and estimated VWAP differ from Kraken and the consolidated market. Rankings are rule scores, not win probabilities. Confirm the current Kraken quote before an order.</p>
@@ -154,21 +159,7 @@ export function StockEntryScanner({ watchlist, onOpen, onUsePlan, onConfirm }: {
     <div className="flex flex-wrap justify-between gap-2 text-xs text-ink-3 mt-3 mb-3"><span>{candidates.length} watchlist stocks · confirmed stocks scanned first · 40 maximum</span><span>{feed.loading ? "Checking stock data…" : feed.data ? `Data captured ${new Date(feed.data.asOf).toLocaleTimeString()} · scans every 30 seconds` : "Waiting for a connected feed"}</span></div>
     {!!events.length && alerts && <details className="border border-line-strong rounded-md p-3 mb-3"><summary className="cursor-pointer text-sm">Stock entry alerts · {events[0].symbol.split(":")[1]} at {new Date(events[0].at).toLocaleTimeString()} · inspect current status</summary><p className="text-xs text-ink-3 my-2">Historical entry-zone events, not current instructions. Maximum one per stock every 10 minutes while this tab is open.</p>{events.map(event => <button key={event.id} className="block text-sm text-accent py-1" onClick={() => onOpen(event.symbol)}>{event.symbol} · entry reference {money(event.entry)} · {new Date(event.at).toLocaleTimeString()}</button>)}</details>}
     {!setups.length ? <div className="border border-line rounded-md p-5 text-sm text-ink-2">{!candidates.length ? "Add or restore stocks in your research watchlist to scan them." : feed.status?.configured && access ? "The first scan will appear here when stock data is available. Setups need at least 21 completed regular-session minute bars." : "Connect the private data feed to receive ranked stock setups. Your free charts and notebook remain available below."}</div>
-      : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{displayed.map(setup => {
-        const canUse = enabled && current(setup, feed.data, now);
-        const expired = setup.state === "entry-zone" && !canUse;
-        const label = canUse ? "Entry zone · verify Kraken" : expired ? "Reference only · recheck data" : setup.state === "extended" ? "Extended · wait for reset" : setup.state === "unavailable" ? "Confirm Kraken availability" : setup.state === "watch" ? "Watch · trigger pending" : "Wait · checks incomplete";
-        return <article key={setup.symbol} className={`border rounded-md p-3 ${canUse ? "border-accent/70 bg-accent/5" : "border-line-strong bg-ground/40"}`}>
-          <div className="flex justify-between items-start gap-2"><div><h3 className="font-semibold text-lg">{setup.ticker}</h3><p className="text-ink-3 text-xs">{setup.setup ?? "Building a setup"}</p></div><span className="num text-sm text-ink-2">Score {setup.score}</span></div>
-          <p className={`text-xs my-2 ${canUse ? "text-accent" : "text-warn"}`}>{label}</p>
-          <div className="flex gap-3 text-sm num mb-3"><strong>{money(setup.price)}</strong><span className="text-ink-2">{setup.changePct == null ? "—" : `${setup.changePct >= 0 ? "+" : ""}${setup.changePct.toFixed(2)}%`}</span></div>
-          {setup.entry != null && <div className="grid grid-cols-3 gap-2 bg-navy rounded p-2 mb-3"><div><div className="eyebrow">Entry</div><span className="num">{money(setup.entry)}</span></div><div><div className="eyebrow">Stop reference</div><span className="num">{money(setup.stop)}</span></div><div><div className="eyebrow">Target</div><span className="num">{money(setup.target)}</span></div><p className="col-span-3 text-xs text-ink-3">Entry zone ends at {money(setup.entryMax)} · gross target {setup.rewardRisk?.toFixed(2) ?? "—"}R before costs</p></div>}
-          <p className="text-xs text-ink-2 mb-2">{setup.reasons[0] ?? (canUse ? "Completed-bar trigger and data checks passed. Inspect the current price in Kraken." : "Waiting for a completed trigger.")}</p>
-          <details className="text-xs text-ink-3"><summary className="cursor-pointer text-ink-2">Why this ranking</summary><ul className="list-disc pl-4 mt-2 space-y-1">{[...setup.reasons, ...setup.evidence].map((reason, index) => <li key={`${index}:${reason}`}>{reason}</li>)}</ul><p className="mt-2">IEX volume ratio {setup.relativeVolume?.toFixed(2) ?? "—"}× · IEX spread {setup.spreadPct?.toFixed(3) ?? "—"}% · estimated IEX VWAP {money(setup.vwap)}</p></details>
-          <div className="flex flex-wrap gap-2 mt-3"><button className="control-button" onClick={() => onOpen(setup.symbol)}>Review chart</button>{canUse && <button className="control-button !border-accent text-accent" onClick={() => usePlan(setup)}>Use entry plan</button>}{watchlist.find(s => s.symbol === setup.symbol)?.availability === "unconfirmed" && <button className="control-button" onClick={() => onConfirm(setup.symbol)}>I can buy this in Kraken</button>}</div>
-        </article>;
-      })}</div>}
-    {setups.length > 6 && <button className="control-button mt-3" onClick={() => setShowAll(v => !v)}>{showAll ? "Show top 6 stocks" : `Show all ${setups.length} scanned stocks`}</button>}
+      : <StockOpportunityBoard opportunities={opportunities} response={feed.data} enabled={enabled} now={now} risk={risk} onRiskChange={onRiskChange} watchlist={watchlist} onOpen={onOpen} onUsePlan={usePlan} onConfirm={onConfirm} />}
     <p className="text-[11px] text-ink-3 mt-3">Cards keep their order between scans. Pausing stops stock polling and alerts. Price age checks continue, so an old entry cannot stay actionable.</p>
   </section>;
 }

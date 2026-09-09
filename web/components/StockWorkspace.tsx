@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { defaultStockState, normalizeStockSymbol, parseStockState, STOCK_STORAGE_KEY, type StockExchange, type StockWorkspaceState } from "@/lib/stocks";
+import { useStockRiskSettings } from "@/components/useStockRiskSettings";
 import { getStockSession } from "@/lib/stock-session";
 import { StockMarketWidgets } from "@/components/StockMarketWidgets";
 import { StockTradeDesk } from "@/components/StockTradeDesk";
@@ -24,6 +25,7 @@ function downloadNotebook(state: StockWorkspaceState) {
 }
 
 export default function StockWorkspace() {
+  const [risk, setRisk] = useStockRiskSettings();
   const [state, setState] = useState<StockWorkspaceState>(defaultStockState);
   const [loaded, setLoaded] = useState(false);
   const [storageError, setStorageError] = useState("");
@@ -105,7 +107,7 @@ export default function StockWorkspace() {
     {storageError && <p role="alert" className="panel p-3 text-warn mb-3">{storageError}</p>}
     {backupError && <p role="alert" className="panel p-3 text-warn mb-3">{backupError}</p>}
     {backup && <div className="panel rounded-lg p-3 mb-3"><p className="mb-3">Import {backup.watchlist.length} stocks, {backup.plans.length} plans and {backup.journal.length} journal entries? This replaces the notebook on this browser. Export the current notebook first if you want to keep it.</p><div className="flex flex-wrap gap-2"><button className="control-button" onClick={() => { setState(backup); setBackup(null); setNotebookRevision(v => v + 1); }}>Replace notebook with backup</button><button className="control-button" onClick={() => setBackup(null)}>Cancel import</button></div></div>}
-    <StockEntryScanner watchlist={state.watchlist}
+    <StockEntryScanner watchlist={state.watchlist} risk={risk} onRiskChange={setRisk}
       onOpen={symbol => { setState(old => ({ ...old, selected: symbol })); setFocus(old => ({ id: "selected-stock-detail", revision: (old?.revision ?? 0) + 1 })); }}
       onUsePlan={plan => { setState(old => ({ ...old, selected: plan.symbol })); setScannerPlan(plan); setFocus(old => ({ id: "stock-plan-desk", revision: (old?.revision ?? 0) + 1 })); }}
       onConfirm={symbol => setState(old => ({ ...old, watchlist: old.watchlist.map(item => item.symbol === symbol ? { ...item, availability: "confirmed" } : item) }))} />
@@ -146,7 +148,7 @@ export default function StockWorkspace() {
           </section>
           <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1.35fr)_minmax(380px,1fr)] gap-3 items-start min-w-0">
             <StockMarketWidgets symbol={selected.symbol} />
-            <div id="stock-plan-desk" className="min-w-0"><StockTradeDesk key={`${selected.symbol}:${notebookRevision}`} symbol={selected.symbol} confirmed={selected.availability === "confirmed"} plans={state.plans} journal={state.journal} scannerPlan={scannerPlan?.symbol === selected.symbol ? scannerPlan : undefined}
+            <div id="stock-plan-desk" className="min-w-0"><StockTradeDesk key={`${selected.symbol}:${notebookRevision}`} symbol={selected.symbol} confirmed={selected.availability === "confirmed"} plans={state.plans} journal={state.journal} scannerPlan={scannerPlan?.symbol === selected.symbol ? scannerPlan : undefined} risk={risk} onRiskChange={setRisk}
               onSavePlan={plan => setState(old => ({ ...old, plans: [plan, ...old.plans].slice(0, 100) }))}
               onDeletePlan={id => setState(old => ({ ...old, plans: old.plans.filter(p => p.id !== id) }))}
               onAddTrade={trade => setState(old => ({ ...old, journal: [trade, ...old.journal].slice(0, 500) }))}
