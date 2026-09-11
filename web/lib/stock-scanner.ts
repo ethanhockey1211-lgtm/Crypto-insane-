@@ -73,6 +73,8 @@ export interface StockSetup {
   rewardRisk: number | null;
   barAt: string | null;
   quoteAt: string | null;
+  /** Original completed trigger, retained for at most three elapsed minutes. */
+  triggerAt?: string;
   reasons: string[];
   evidence: string[];
   details?: StockSetupDetails;
@@ -84,7 +86,8 @@ const easternClock = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
 });
 type TimedBar = StockBar & { time: number };
-type Trigger = { setup: StockPlan["setup"]; level: number; confirmed: boolean; volumeNeeded: number; explanation: string };
+type Trigger = { setup: StockPlan["setup"]; level: number; confirmed: boolean; volumeNeeded: number; explanation: string;
+  at: string; close: number; atr: number; structure: number; relativeVolume: number };
 type DetailContext = {
   bars: TimedBar[];
   start: number;
@@ -129,6 +132,42 @@ function estimatedVwap(bars: TimedBar[]): number | null {
   if (!positive(volume)) return null;
   const value = bars.reduce((sum, bar) => sum + (bar.vwap ?? (bar.high / 3 + bar.low / 3 + bar.close / 3)) * (bar.volume / volume), 0);
   return positive(value) ? value : null;
+}
+
+/** Evaluate each trigger using only observations available when its candle closed. */
+function findTriggers(bars: TimedBar[], start: number): Trigger[] {
+  if (bars.length < 21) return [];
+  const last = bars.at(-1)!, previous = bars.at(-2)!;
+  if (last.time - previous.time !== MINUTE || last.time - bars.at(-21)!.time > 30 * MINUTE) return [];
+  const priorBars = bars.slice(0, -1), closes = bars.map(bar => bar.close);
+  const fast = ema(closes, 9), slow = ema(closes, 20), atr = atr14(bars), vwap = estimatedVwap(bars);
+  const priorVolume = average(priorBars.slice(-20).map(bar => bar.volume));
+  if (!positive(fast) || !positive(slow) || !positive(atr) || !positive(vwap) || !positive(priorVolume)) return [];
+  const bullish = last.close > last.open, trend = fast > slow && last.close >= fast;
+  const previousVwap = estimatedVwap(priorBars);
+  const previousEma9 = ema(priorBars.map(bar => bar.close), 9), previousEma20 = ema(priorBars.map(bar => bar.close), 20);
+  const opening = bars.filter(bar => bar.time < start + 15 * MINUTE);
+  const completeOpening = opening.length === 15 && opening.every((bar, index) => bar.time === start + index * MINUTE);
+  const common = { at: last.at, close: last.close, atr, structure: Math.min(...bars.slice(-3).map(bar => bar.low)), relativeVolume: last.volume / priorVolume };
+  const candidates: Trigger[] = [];
+  if (completeOpening) {
+    const level = Math.max(...opening.map(bar => bar.high));
+    candidates.push({ ...common, setup: "Opening range breakout", level, volumeNeeded: 1.1,
+      confirmed: bullish && trend && previous.close <= level && last.close > level,
+      explanation: "Completed candle crossed above the verified 15-minute opening-range high." });
+  }
+  candidates.push({ ...common, setup: "VWAP reclaim", level: vwap, volumeNeeded: 1,
+    confirmed: bullish && last.close > slow && positive(previousVwap) && previous.close <= previousVwap && last.close > vwap,
+    explanation: "Completed candle reclaimed estimated session IEX VWAP from below and closed above EMA20." });
+  candidates.push({ ...common, setup: "Pullback", level: previous.high, volumeNeeded: 1,
+    confirmed: bullish && trend && positive(previousEma9) && positive(previousEma20) && previousEma9 > previousEma20
+      && previous.low <= previousEma9 + 0.15 * atr && previous.close >= previousEma20 && last.close > previous.high,
+    explanation: "Completed candle broke the prior pullback candle high after an EMA9-area touch in an upward EMA trend." });
+  const resistance = Math.max(...priorBars.slice(-20).map(bar => bar.high));
+  candidates.push({ ...common, setup: "Breakout", level: resistance, volumeNeeded: 1.1,
+    confirmed: bullish && trend && last.close > resistance,
+    explanation: "Completed candle closed above the preceding 20 observed bars' highs." });
+  return candidates;
 }
 function validBar(bar: StockBar): boolean {
   return [bar.open, bar.high, bar.low, bar.close, bar.volume].every(positive)
@@ -239,19 +278,19 @@ function explainSetup(out: StockSetup, context?: DetailContext): StockSetupDetai
       : out.ema9 > out.ema20 ? "EMA9 above EMA20, close below EMA9"
         : "EMA9 is not above EMA20";
   const thesis = trigger && last
-    ? `${out.ticker}: ${trigger.explanation} The last completed close was ${priceText(last.close)}, versus the ${priceText(trigger.level)} trigger reference; IEX bar volume was ${out.relativeVolume!.toFixed(2)}× its preceding 20 observed bars' average.`
+    ? `${out.ticker}: ${trigger.explanation} The last completed close was ${priceText(last.close)}, versus the ${priceText(trigger.level)} trigger reference; the trigger candle at ${trigger.at} had ${trigger.relativeVolume.toFixed(2)}× its preceding 20 observed bars' average.`
     : reference && last ? `${out.ticker} is being watched for ${reference.setup.toLowerCase()} around the ${priceText(reference.level)} observed reference. The last completed close was ${priceText(last.close)}; the required completed-bar pattern has not confirmed.`
       : last ? `${out.ticker} has no completed long setup selected. The last completed close was ${priceText(last.close)}. ${trendLabel}; wait for the stated pattern and data checks to align.`
         : `${out.ticker} has no assessable completed-bar setup in this scan. Valid current-session IEX observations are needed before a trade thesis can be formed.`;
   const confirmation = reference
-    ? `${trigger ? "Completed-bar pattern confirmed" : "Still required"}: ${triggerRequirement(reference)}. The pattern needs IEX closed-bar relative volume of at least ${reference.volumeNeeded.toFixed(2)}×.${out.relativeVolume === null ? "" : ` Current reading: ${out.relativeVolume.toFixed(2)}×.`} ${out.state === "entry-zone" ? "The latest IEX trade and ask also pass the entry-zone checks." : "Entry eligibility still requires all listed checks to pass; pattern confirmation alone does not qualify an entry."}`
-    : "Wait for a qualifying completed-bar pattern, sufficient IEX volume, fresh two-sided pricing, and confirmed Kraken availability. No conditional trigger has been selected.";
+    ? `${trigger ? "Completed-bar pattern confirmed" : "Still required"}: ${triggerRequirement(reference)}. The pattern needs IEX closed-bar relative volume of at least ${reference.volumeNeeded.toFixed(2)}×.${out.relativeVolume === null ? "" : ` Latest bar: ${out.relativeVolume.toFixed(2)}×.${trigger ? ` Trigger bar: ${trigger.relativeVolume.toFixed(2)}× at ${trigger.at}; valid for up to three minutes after its close.` : ""}`} ${out.state === "entry-zone" ? "The latest IEX trade and ask also pass the entry-zone checks." : "Entry eligibility still requires all listed checks to pass; pattern confirmation alone does not qualify an entry."}`
+    : "Wait for a qualifying completed-bar pattern, sufficient IEX volume, fresh two-sided pricing, and all stated data checks. No conditional trigger has been selected.";
   const invalidation = out.state === "entry-zone" && positive(out.stop) && positive(structure)
-    ? `This reference plan is invalidated at the stop of ${priceText(out.stop)}, below the recent three-bar low of ${priceText(structure)}. The lower-zone entry-to-stop distance is at least 0.75 ATR. A stop order's execution price is not guaranteed.`
+    ? `This reference plan is invalidated at the stop of ${priceText(out.stop)}, below the trigger’s three-bar low of ${priceText(trigger?.structure ?? structure)}. The lower-zone entry-to-stop distance is at least 0.75 ATR measured at confirmation. A stop order's execution price is not guaranteed.`
     : out.state === "extended" ? "The compact entry condition has failed because the latest trade or IEX ask is above its reference zone. No active entry plan: wait for a fresh qualifying setup and avoid carrying forward the old trigger as an entry."
       : `No active entry plan. ${out.reasons[0] ?? "The required completed-bar pattern has not confirmed."} Reassess after the missing checks pass; any conditional reference must be recomputed with a fresh scan.`;
   const cautions = ["IEX is a single-exchange feed: observed prices, spread, and volume are not the consolidated US market or a Kraken execution quote."];
-  if (out.state !== "entry-zone") cautions.push(...out.reasons);
+  cautions.push(...out.reasons.filter(reason => out.state !== "entry-zone" || reason.includes("availability")));
   if (out.vwap !== null) cautions.push("Session VWAP is estimated from available IEX minute bars; missing minute VWAP uses typical OHLC prices.");
   if (context && !completeOpening) cautions.push("The 15-minute opening range is unconfirmed because at least one 09:30–09:44 ET IEX bar is missing; no opening-range level is supplied.");
   const recent = bars.slice(-21);
@@ -276,7 +315,11 @@ export function stockSetupIsCurrent(setup: StockSetup, response: StockScanRespon
     || setup.entryMax! <= setup.entry! || setup.stop! >= setup.entry! || setup.target! <= setup.entryMax!) return false;
   const barTime = timestamp(setup.barAt);
   const barAge = nowMs - (barTime + MINUTE);
-  if (!Number.isFinite(barAge) || barTime % MINUTE !== 0 || barAge < 0 || barAge > 120_000) return false;
+  if (!Number.isFinite(barAge) || barTime % MINUTE !== 0 || barAge < 0 || barAge > 60_000) return false;
+  if (setup.triggerAt) {
+    const triggerTime = timestamp(setup.triggerAt), triggerAge = nowMs - triggerTime - MINUTE;
+    if (!Number.isFinite(triggerAge) || triggerTime % MINUTE !== 0 || triggerAge < 0 || triggerAge > 3 * MINUTE) return false;
+  }
   const matching = response.rows.filter(row => row.ticker === setup.ticker);
   if (matching.length !== 1) return false;
   const data = matching[0], trade = data.latestTrade, quote = data.latestQuote;
@@ -317,8 +360,9 @@ export function scanStockSetups(response: StockScanResponse, watchlist: StockIte
     const out = base(item);
     const blocked = [...globalReasons];
     if (normalizeStockSymbol(item.symbol) !== item.symbol) blocked.push("The watchlist symbol must use a supported US exchange and stock ticker.");
-    const available = item.availability === "confirmed";
-    if (!available) out.reasons.push(item.availability === "unavailable" ? "Marked unavailable in your Kraken account." : "Confirm this stock is available in your Kraken account before an entry can qualify.");
+    const available = item.availability !== "unavailable";
+    if (!available) out.reasons.push("Marked unavailable in your Kraken account.");
+    else if (item.availability !== "confirmed") out.reasons.push("Kraken availability is unconfirmed. You can research this setup; verify your account's Buy list before using an entry plan.");
     const matched = matches.get(out.ticker) ?? [];
     if (matched.length !== 1) blocked.push(matched.length > 1 ? "Conflicting duplicate market rows prevent a reliable symbol match." : `No matching Alpaca IEX data for ${out.ticker}.`);
     if (blocked.length && (matched.length !== 1 || response.status !== "ready" || !Number.isFinite(start) || normalizeStockSymbol(item.symbol) !== item.symbol)) {
@@ -346,7 +390,7 @@ export function scanStockSetups(response: StockScanResponse, watchlist: StockIte
     out.barAt = last?.at ?? null;
     if (clean.invalid) blocked.push("Invalid or conflicting minute bars were excluded; complete session calculations cannot be trusted.");
     if (bars.length < 21) blocked.push(`Need at least 21 valid completed regular-session one-minute bars; ${bars.length} available.`);
-    if (!last || nowMs - (last.time + MINUTE) > 120_000) blocked.push("The latest completed one-minute bar is more than 120 seconds old or missing.");
+    if (!last || nowMs - (last.time + MINUTE) > 60_000) blocked.push("The latest completed IEX minute is missing (last bar closed over 60 seconds ago). Wait for complete recent bars before retaining a setup.");
     const recent = bars.slice(-21);
     const adjacent = !!last && !!previous && last.time - previous.time === MINUTE;
     const boundedHistory = recent.length === 21 && recent[20].time - recent[0].time <= 30 * MINUTE;
@@ -373,43 +417,36 @@ export function scanStockSetups(response: StockScanResponse, watchlist: StockIte
       out.state = available ? "blocked" : "unavailable"; out.reasons.push(...blocked); return out;
     }
     const atr = out.atr;
-    const bullish = last.close > last.open;
     const trend = out.ema9 > out.ema20 && last.close >= out.ema9;
-    const priorBars = bars.slice(0, -1);
-    const previousVwap = fullHistory ? estimatedVwap(priorBars) : null;
-    const previousEma9 = ema(priorBars.map(bar => bar.close), 9);
-    const previousEma20 = ema(priorBars.map(bar => bar.close), 20);
-    const opening = bars.filter(bar => bar.time < start + 15 * MINUTE);
-    const completeOpening = opening.length === 15 && opening.every((bar, index) => bar.time === start + index * MINUTE);
-    const openingHigh = completeOpening ? Math.max(...opening.map(bar => bar.high)) : null;
-    if (!completeOpening) out.evidence.push("Opening range is unconfirmed: all 09:30–09:44 ET minute bars are required for an opening-range breakout.");
-    const resistance = Math.max(...priorBars.slice(-20).map(bar => bar.high));
-    const candidates: Trigger[] = [];
-    if (openingHigh !== null) candidates.push({ setup: "Opening range breakout", level: openingHigh, volumeNeeded: 1.1,
-      confirmed: bullish && trend && previous.close <= openingHigh && last.close > openingHigh,
-      explanation: "Completed candle crossed above the verified 15-minute opening-range high." });
-    candidates.push({ setup: "VWAP reclaim", level: out.vwap, volumeNeeded: 1,
-      confirmed: bullish && last.close > out.ema20 && positive(previousVwap) && previous.close <= previousVwap && last.close > out.vwap,
-      explanation: "Completed candle reclaimed estimated session IEX VWAP from below and closed above EMA20." });
-    candidates.push({ setup: "Pullback", level: previous.high, volumeNeeded: 1,
-      confirmed: bullish && trend && positive(previousEma9) && positive(previousEma20) && previousEma9 > previousEma20
-        && previous.low <= previousEma9 + 0.15 * atr && previous.close >= previousEma20 && last.close > previous.high,
-      explanation: "Completed candle broke the prior pullback candle high after an EMA9-area touch in an upward EMA trend." });
-    candidates.push({ setup: "Breakout", level: resistance, volumeNeeded: 1.1,
-      confirmed: bullish && trend && last.close > resistance,
-      explanation: "Completed candle closed above the preceding 20 observed bars' highs." });
+    const candidates = findTriggers(bars, start);
+    if (!candidates.some(candidate => candidate.setup === "Opening range breakout")) out.evidence.push("Opening range is unconfirmed: all 09:30–09:44 ET minute bars are required for an opening-range breakout.");
     const reference = out.price !== null && quoteFresh ? Math.max(out.price, quote!.ask) : null;
-    const structure = Math.min(...bars.slice(-3).map(bar => bar.low));
-    const assessments = candidates.filter(candidate => candidate.confirmed).map(trigger => {
-      const entry = trigger.level + 0.02 * atr, entryMax = entry + 0.25 * atr;
-      const stop = Math.min(structure - 0.1 * atr, entry - 0.75 * atr);
-      // A planned target of two gross R from the upper zone is not a price forecast.
+    const recentTriggers: Trigger[] = [];
+    for (let endIndex = bars.length; endIndex >= 21; endIndex--) {
+      const triggerBar = bars[endIndex - 1];
+      if (nowMs - (triggerBar.time + MINUTE) > 3 * MINUTE) break;
+      const continuation = bars.slice(endIndex);
+      if (!continuation.every((bar, index) => bar.time === triggerBar.time + (index + 1) * MINUTE)) continue;
+      for (const trigger of (endIndex === bars.length ? candidates : findTriggers(bars.slice(0, endIndex), start))) {
+        if (!trigger.confirmed) continue;
+        const stop = Math.min(trigger.structure - 0.1 * trigger.atr, trigger.level + 0.02 * trigger.atr - 0.75 * trigger.atr);
+        if (continuation.some(bar => bar.low <= stop || bar.close < trigger.level)) continue;
+        recentTriggers.push(trigger);
+      }
+    }
+    const assessments = recentTriggers.map(trigger => {
+      const entry = trigger.level + 0.02 * trigger.atr;
+      // The crossing candle has already closed. Give its observed close a small fixed
+      // follow-through allowance; never recenter this ceiling on subsequent live prices.
+      const entryMax = Math.max(entry, trigger.close) + 0.25 * trigger.atr;
+      const stop = Math.min(trigger.structure - 0.1 * trigger.atr, entry - 0.75 * trigger.atr);
       const target = entryMax + 2 * (entryMax - stop);
       const rewardRisk = reference === null ? null : finiteOrNull((target - reference) / (reference - stop));
+      const oversized = trigger.close > trigger.level + trigger.atr;
       const validGeometry = [entry, entryMax, stop, target, rewardRisk].every(positive)
-        && stop < entry && target > entryMax && rewardRisk! >= 2 - 1e-9;
+        && stop < entry && target > entryMax && rewardRisk! >= 2 - 1e-9 && !oversized;
       const inZone = reference !== null && out.price !== null && out.price >= entry && quote!.ask >= entry && reference <= entryMax;
-      return { trigger, entry, entryMax, stop, target, rewardRisk, validGeometry, inZone, volumeConfirmed: out.relativeVolume! >= trigger.volumeNeeded };
+      return { trigger, entry, entryMax, stop, target, rewardRisk, validGeometry, inZone, oversized, volumeConfirmed: trigger.relativeVolume >= trigger.volumeNeeded };
     });
     // One incomplete preferred pattern must not hide a different independently qualified
     // setup. Keep the preferred trigger for a useful watch/extended explanation if none pass.
@@ -418,6 +455,7 @@ export function scanStockSetups(response: StockScanResponse, watchlist: StockIte
     const entry = selected?.entry ?? null, entryMax = selected?.entryMax ?? null, inZone = selected?.inZone ?? false;
     const near = candidates.filter(candidate => Math.abs(last.close - candidate.level) <= 0.75 * atr)
       .sort((a, b) => Math.abs(last.close - a.level) - Math.abs(last.close - b.level))[0];
+    out.triggerAt = trigger?.at;
     out.setup = trigger?.setup ?? (trend || last.close > out.vwap ? near?.setup ?? null : null);
     Object.assign(detailContext, { scored: true, trend, trigger, near, inZone });
 
@@ -441,16 +479,16 @@ export function scanStockSetups(response: StockScanResponse, watchlist: StockIte
       if (!trend) out.reasons.push("The fast EMA trend is not yet aligned upward with price above EMA9.");
       return out;
     }
-    out.evidence.push(trigger.explanation);
-    if (entry !== null && entryMax !== null && reference !== null && reference > entryMax) {
+    out.evidence.push(`${trigger.explanation} Confirmed ${trigger.at} at ${trigger.relativeVolume.toFixed(2)}× IEX volume. Expires three minutes after that candle closes; later candles must hold the trigger and original stop.`);
+    if (selected.oversized || (entry !== null && entryMax !== null && reference !== null && reference > entryMax)) {
       out.state = "extended";
-      out.reasons.push(`Price or IEX ask is above the compact ${priceText(entry)}–${priceText(entryMax)} reference zone (0.25 ATR wide); wait for a fresh setup rather than chase.`);
+      out.reasons.push(selected.oversized ? "The confirming candle closed more than 1 ATR above its trigger; wait for a fresh setup rather than chase." : `Price or IEX ask is above the fixed ${priceText(entry!)}–${priceText(entryMax!)} reference zone; wait for a fresh setup rather than chase.`);
       return out;
     }
-    if (!inZone || out.relativeVolume < trigger.volumeNeeded) {
+    if (!inZone || !selected.volumeConfirmed) {
       out.state = "watch";
       if (!inZone) out.reasons.push("The latest trade and IEX ask have not held inside the completed trigger's entry zone.");
-      if (out.relativeVolume < trigger.volumeNeeded) out.reasons.push(`Await IEX closed-bar volume of at least ${trigger.volumeNeeded.toFixed(2)}× the preceding 20 observed bars.`);
+      if (!selected.volumeConfirmed) out.reasons.push(`Await IEX closed-bar volume of at least ${trigger.volumeNeeded.toFixed(2)}× the preceding 20 observed bars on a new trigger. This trigger measured ${trigger.relativeVolume.toFixed(2)}×.`);
       return out;
     }
     if (!selected.validGeometry) {
@@ -458,7 +496,7 @@ export function scanStockSetups(response: StockScanResponse, watchlist: StockIte
     }
     out.state = "entry-zone"; out.entry = entry; out.entryMax = entryMax; out.stop = selected.stop; out.target = selected.target; out.rewardRisk = selected.rewardRisk;
     out.reasons.push("Completed-bar setup is inside its reference entry zone. Verify the current Kraken quote and availability before deciding to trade.");
-    out.evidence.push("Stop sits below recent three-bar structure with a 0.75 ATR minimum distance; target is 2R from the upper zone before costs. Prices and indicators are IEX references, not Kraken execution prices.");
+    out.evidence.push("Stop sits below the trigger candle's three-bar structure with a 0.75 ATR minimum distance; target is 2R from the upper zone before costs. Prices and indicators are IEX references, not Kraken execution prices.");
     return out;
   });
   const order: Record<StockSetup["state"], number> = { "entry-zone": 0, watch: 1, extended: 2, blocked: 3, unavailable: 3 };

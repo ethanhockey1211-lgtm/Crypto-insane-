@@ -12,6 +12,7 @@ export interface StockOpportunitySettings {
 
 export interface StockOpportunity {
   setup: StockSetup;
+  /** Current market setup clears the cost filter; position sizing is separate. */
   eligible: boolean;
   reason: string;
   entry: number | null;
@@ -96,8 +97,9 @@ export function buildStockOpportunities(
       if (hasBudget) {
         out.position = sizeStockPlan({ ...settings, entry, stop: setup.stop!, target: target2 });
       }
+      out.eligible = true;
       if (out.position && !out.position.valid) {
-        out.reason = out.position.reason || "The supplied budget cannot support this position.";
+        out.reason = `Market setup qualifies. ${out.position.reason || "The supplied budget cannot support this position."} Per-share research remains available; adjust the budget before using a plan.`;
       } else {
         out.eligible = true;
         out.reason = hasBudget

@@ -97,14 +97,47 @@ public class AlpacaStockScannerTests
             Assert.Contains("symbols=AAPL%2CNVDA", request.Uri.Query);
             Assert.Contains("feed=iex", request.Uri.Query);
         });
-        Assert.Contains("timeframe=1Min", requests[1].Uri.Query);
-        Assert.Contains("adjustment=raw", requests[1].Uri.Query);
-        Assert.Contains("sort=asc", requests[1].Uri.Query);
-        Assert.Contains("limit=10000", requests[1].Uri.Query);
-        Assert.Contains("start=2026-09-09T13%3A30", requests[1].Uri.Query);
-        Assert.Contains("page_token=page%2F%2B%20token", requests[2].Uri.Query);
+        Assert.Contains("timeframe=1Min", requests[0].Uri.Query);
+        Assert.Contains("adjustment=raw", requests[0].Uri.Query);
+        Assert.Contains("sort=asc", requests[0].Uri.Query);
+        Assert.Contains("limit=10000", requests[0].Uri.Query);
+        Assert.Contains("start=2026-09-09T13%3A30", requests[0].Uri.Query);
+        Assert.Contains("page_token=page%2F%2B%20token", requests[1].Uri.Query);
         var serialized = JsonSerializer.Serialize(result.Body);
         Assert.DoesNotContain(Key, serialized); Assert.DoesNotContain(Secret, serialized); Assert.DoesNotContain(Token, serialized);
+    }
+
+    [Fact]
+    public async Task Slow_snapshots_keep_current_observations_and_history_is_fetched_first()
+    {
+        var clock = new Clock(Now);
+        var handler = new Handler((request, _) =>
+        {
+            clock.At += TimeSpan.FromSeconds(4);
+            return Task.FromResult(Json(request.RequestUri!.AbsolutePath.EndsWith("snapshots")
+                ? Snapshot.Replace("2026-09-09T14:00:29Z", clock.At.ToString("O")) : Bars(Bar())));
+        });
+        using var scanner = Scanner(handler, clock);
+        var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
+        var row = Assert.Single(result.Body.Rows);
+        Assert.EndsWith("bars", handler.Requests.First().Uri.AbsolutePath);
+        Assert.EndsWith("snapshots", handler.Requests.Last().Uri.AbsolutePath);
+        Assert.Equal(Now.AddSeconds(8), result.Body.AsOf);
+        Assert.Equal(clock.At, row.LatestTrade!.At);
+        Assert.Equal(clock.At, row.LatestQuote!.At);
+    }
+
+    [Fact]
+    public async Task Short_pages_beyond_three_are_followed_to_completion()
+    {
+        var page = 0;
+        var handler = new Handler((request, _) => Task.FromResult(Json(request.RequestUri!.AbsolutePath.EndsWith("snapshots") ? Snapshot
+            : Bars(Bar($"2026-09-09T13:{30 + page++}:00Z"), page < 5 ? $"page-{page}" : null))));
+        using var scanner = Scanner(handler);
+        var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
+        Assert.True(result.Body.Rows[0].HistoryComplete);
+        Assert.Equal(5, result.Body.Rows[0].Bars.Count);
+        Assert.Equal(6, handler.Requests.Count);
     }
 
     [Theory]
@@ -130,11 +163,11 @@ public class AlpacaStockScannerTests
         var handler = new Handler();
         using var scanner = Scanner(handler, new Clock(DateTimeOffset.Parse(at)));
         await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
-        Assert.Contains("start=" + start, handler.Requests.Last().Uri.Query);
+        Assert.Contains("start=" + start, handler.Requests.First().Uri.Query);
     }
 
     [Theory]
-    [InlineData(false, 4)]
+    [InlineData(false, 13)]
     [InlineData(true, 3)]
     public async Task Pagination_is_bounded_and_a_truncated_or_repeated_token_never_claims_complete_history(bool repeatToken, int expectedRequests)
     {
@@ -142,7 +175,7 @@ public class AlpacaStockScannerTests
         var handler = new Handler((request, _) => Task.FromResult(Json(request.RequestUri!.AbsolutePath.EndsWith("snapshots") ? Snapshot : Bars(Bar(), repeatToken ? "same" : $"p{++page}"))));
         using var scanner = Scanner(handler);
         var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
-        Assert.Equal(expectedRequests, handler.Requests.Count); // One snapshot plus at most three pages.
+        Assert.Equal(expectedRequests, handler.Requests.Count); // One snapshot plus at most twelve pages.
         Assert.Single(result.Body.Rows[0].Bars); // Overlapping page buckets are deduplicated.
         Assert.False(result.Body.Rows[0].HistoryComplete);
     }
@@ -227,7 +260,7 @@ public class AlpacaStockScannerTests
         Assert.Equal(390, row.Bars.Count);
         Assert.Equal(open, row.Bars[0].At);
         Assert.Equal(open.AddMinutes(389), row.Bars[^1].At);
-        Assert.Contains("end=2026-09-09T20%3A00", handler.Requests.Last().Uri.Query);
+        Assert.Contains("end=2026-09-09T20%3A00", handler.Requests.First().Uri.Query);
         Assert.True(row.HistoryComplete);
     }
 
@@ -384,7 +417,7 @@ public class AlpacaStockScannerTests
         var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
         Assert.Equal(upstream == 429 ? 429 : 502, result.StatusCode);
         Assert.Equal("error", result.Body.Status); Assert.Equal(code, result.Body.ErrorCode); Assert.Empty(result.Body.Rows);
-        Assert.Equal(failBars ? 4 : 3, handler.Requests.Count);
+        Assert.Equal(failBars ? 3 : 4, handler.Requests.Count);
         Assert.False(string.IsNullOrWhiteSpace(result.Body.Message));
         var json = JsonSerializer.Serialize(result.Body);
         Assert.DoesNotContain(Key, json); Assert.DoesNotContain(Secret, json); Assert.DoesNotContain(Token, json);
@@ -397,13 +430,13 @@ public class AlpacaStockScannerTests
     {
         var body = "invalid-json-" + Key + Secret + Token;
         var handler = new Handler((request, _) => Task.FromResult(Json(request.RequestUri!.AbsolutePath.EndsWith(failBars ? "bars" : "snapshots")
-            ? body : Snapshot)));
+            ? body : request.RequestUri!.AbsolutePath.EndsWith("bars") ? Bars(Bar()) : Snapshot)));
         using var scanner = Scanner(handler);
         var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
         Assert.Equal(502, result.StatusCode);
         Assert.Equal("provider-response", result.Body.ErrorCode);
         Assert.Empty(result.Body.Rows);
-        Assert.Equal(failBars ? 2 : 1, handler.Requests.Count);
+        Assert.Equal(failBars ? 1 : 2, handler.Requests.Count);
         var json = JsonSerializer.Serialize(result.Body);
         Assert.DoesNotContain(Key, json); Assert.DoesNotContain(Secret, json); Assert.DoesNotContain(Token, json);
     }
@@ -417,25 +450,25 @@ public class AlpacaStockScannerTests
     {
         var handler = new Handler((request, _) => request.RequestUri!.AbsolutePath.EndsWith(failBars ? "bars" : "snapshots")
             ? Task.FromException<HttpResponseMessage>(ioFailure ? new IOException(Key + Secret + Token) : new HttpRequestException(Key + Secret + Token))
-            : Task.FromResult(Json(Snapshot)));
+            : Task.FromResult(Json(request.RequestUri!.AbsolutePath.EndsWith("bars") ? Bars(Bar()) : Snapshot)));
         using var scanner = Scanner(handler);
         var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
         Assert.Equal(502, result.StatusCode);
         Assert.Equal("provider-network", result.Body.ErrorCode);
         Assert.Empty(result.Body.Rows);
-        Assert.Equal(failBars ? 2 : 1, handler.Requests.Count);
+        Assert.Equal(failBars ? 1 : 2, handler.Requests.Count);
         var json = JsonSerializer.Serialize(result.Body);
         Assert.DoesNotContain(Key, json); Assert.DoesNotContain(Secret, json); Assert.DoesNotContain(Token, json);
     }
 
     [Fact]
-    public async Task Cache_normalizes_symbol_sets_expires_at_thirty_seconds_and_holds_at_most_eight_sets()
+    public async Task Cache_normalizes_symbol_sets_expires_before_the_thirty_second_poll_and_holds_at_most_eight_sets()
     {
         var handler = new Handler(); var clock = new Clock(Now); using var scanner = Scanner(handler, clock);
         var first = await scanner.ScanAsync("NVDA,AAPL", Token, CancellationToken.None);
         var cached = await scanner.ScanAsync(" aapl,nvda ", Token, CancellationToken.None);
         Assert.Same(first.Body, cached.Body); Assert.Equal(2, handler.Requests.Count);
-        clock.At += TimeSpan.FromSeconds(29);
+        clock.At += TimeSpan.FromSeconds(19);
         Assert.Same(first.Body, (await scanner.ScanAsync("NVDA,AAPL", Token, CancellationToken.None)).Body);
         clock.At += TimeSpan.FromSeconds(1);
         Assert.NotSame(first.Body, (await scanner.ScanAsync("NVDA,AAPL", Token, CancellationToken.None)).Body);
@@ -485,13 +518,13 @@ public class AlpacaStockScannerTests
         {
             if (request.RequestUri!.AbsolutePath.EndsWith(failBars ? "bars" : "snapshots"))
                 await Task.Delay(Timeout.InfiniteTimeSpan, ct);
-            return Json(Snapshot);
+            return Json(request.RequestUri!.AbsolutePath.EndsWith("bars") ? Bars(Bar()) : Snapshot);
         });
         using var scanner = Scanner(handler, new ShortTimeoutClock(Now));
         var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(502, result.StatusCode); Assert.Empty(result.Body.Rows);
         Assert.Equal("provider-timeout", result.Body.ErrorCode);
-        Assert.Equal(failBars ? 2 : 1, handler.Requests.Count);
+        Assert.Equal(failBars ? 1 : 2, handler.Requests.Count);
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => scanner.ScanAsync("NVDA", Token, cancelled.Token));
     }
