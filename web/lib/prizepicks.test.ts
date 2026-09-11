@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { americanDecimal, centralDate, entryAnalysis, historyEstimate, noVig, rankBoard, readEntries, type Pick, type PicksBoard, type PropLine } from "./prizepicks";
+import { americanDecimal, boardProjections, centralDate, entryAnalysis, historyEstimate, noVig, rankBoard, readEntries, stalePick, SPORTS, SPORT_STATS, type Pick, type PicksBoard, type PropLine } from "./prizepicks";
 
 const now = Date.parse("2026-09-11T15:00:00Z");
 const line: PropLine = { eventId: "game1", sport: "basketball_nba", matchup: "A at B", startsAt: "2026-09-11T23:00:00Z", player: "Player A", stat: "player_points", line: 24.5, bookmaker: "prizepicks", updatedAt: "2026-09-11T14:59:00Z", over: null, under: null };
@@ -7,6 +7,33 @@ const board = (lines: PropLine[] = [{ ...line }, { ...line, bookmaker: "fanduel"
 const pick = (patch: Partial<Pick> = {}): Pick => ({ ...rankBoard(board(), now)[0], estimate: { probability: .6, low: .55, high: .65, evidence: "fixture", conditional: false }, ...patch });
 
 describe("PrizePicks evidence", () => {
+  const nhl = (): PropLine => ({ ...line, sport: "icehockey_nhl", stat: "player_shots_on_goal", line: 2.5,
+    history: Array.from({ length: 12 }, (_, i) => ({ date: `2026-09-${String(10 - Math.floor(i / 2)).padStart(2, "0")}`, value: i < 8 ? 4 : 0 }))
+      .map((s, i) => ({ ...s, date: new Date(now - (i + 1) * 86400000).toISOString().slice(0, 10) })) });
+  it("includes NHL and shows posted lines even without probability evidence", () => {
+    expect(SPORTS.icehockey_nhl).toBe("NHL"); expect(SPORT_STATS.icehockey_nhl).toContain("player_total_saves");
+    const p = { ...nhl(), history: null }; expect(rankBoard(board([p]), now)).toEqual([]);
+    expect(boardProjections(board([p]), now)).toHaveLength(1);
+  });
+  it("recommends an actual NHL line using official recent results without odds", () => {
+    const ranked = rankBoard(board([nhl()]), now);
+    expect(ranked).toHaveLength(1); expect(ranked[0].side).toBe("More");
+    expect(ranked[0].method).toBe("nhl-history"); expect(ranked[0].estimate.probability).toBeCloseTo(9 / 14);
+    expect(ranked[0].estimate.evidence).toContain("8 hits / 12 games");
+    expect(stalePick(ranked[0], now + 300001)).toBe(true);
+    expect(rankBoard(board([nhl()]), now + 300001)).toEqual([]);
+  });
+  it("counts ties as non-hits on integer NHL projections", () => {
+    const p = nhl(); p.line = 4;
+    // Eight ties and four misses is insufficient for either direction to be recommended.
+    expect(rankBoard(board([p]), now)).toEqual([]);
+  });
+  it("rejects short, stale, duplicate, missing or future NHL samples", () => {
+    for (const history of [nhl().history!.slice(0, 5), nhl().history!.map(s => ({ ...s, date: "2026-08-01" })),
+      nhl().history!.map(s => ({ ...s, date: "2026-09-12" })), nhl().history!.map(s => ({ ...s, value: NaN }))]) {
+      expect(rankBoard(board([{ ...nhl(), history }]), now)).toEqual([]);
+    }
+  });
   it("removes each book's margin, then averages distinct books", () => {
     expect(noVig(americanDecimal("-110"), americanDecimal("-110"))).toBe(.5);
     expect(noVig(americanDecimal("-200"), americanDecimal("+150"))).toBeCloseTo(.625);
