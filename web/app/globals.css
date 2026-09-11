@@ -123,6 +123,14 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 
 :focus-visible { outline: 1px solid var(--color-accent); outline-offset: 1px; }
 
+.prizepicks-workspace { font-size: 16px; line-height: 1.5; }
+.prizepicks-workspace .text-ink-2 { font-size: 14px; }
+.prizepicks-workspace .control-button { font-size: 14px; padding: 9px 12px; white-space: normal; }
+.prizepicks-workspace .field { padding: 9px 10px; font-size: 16px; min-width: 0; }
+.prizepicks-workspace label { min-width: 0; font-size: 14px; }
+.prizepicks-workspace button:disabled { opacity: .5; cursor: not-allowed; }
+.prizepicks-workspace textarea { font: inherit; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

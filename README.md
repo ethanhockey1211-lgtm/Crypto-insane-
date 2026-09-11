@@ -7,6 +7,15 @@ terminal-style UI. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the desi
 
 Nothing here predicts prices. No setup is ever presented as certain. Real-money execution does not exist in this codebase.
 
+## PrizePicks tracker
+
+The **PrizePicks** tab adds daily player-prop comparisons, a custom pick analyzer, and a browser-local entry tracker.
+Compare current standard PrizePicks lines with matching sportsbook odds, inspect estimated hit chance and risk,
+or analyze your own line using actual recent results or two-sided sportsbook odds. Combined entry estimates
+account for missing evidence and flag related games. No entries are submitted and no payout is promised.
+Live daily comparisons require a server-side sports data key; custom analysis works without one.
+See [PrizePicks setup and methodology](docs/prizepicks-tracker.md).
+
 ## Kraken USD scanner
 
 The shipped configuration uses Kraken public spot market data with `Kraken:CountryCode=US` for this
