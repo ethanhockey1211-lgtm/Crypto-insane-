@@ -9,6 +9,7 @@ describe("stock feed error diagnostics", () => {
     ["provider-request", "data request"],
     ["provider-rate-limit", "request limit"],
     ["provider-unavailable", "service error"],
+    ["provider-http-error", "unexpected HTTP response"],
     ["provider-timeout", "did not respond"],
     ["provider-network", "could not connect"],
     ["provider-response", "could not read"],
@@ -35,5 +36,37 @@ describe("stock feed error diagnostics", () => {
     expect(stockFeedError(503, null)).toContain("not configured");
     expect(stockFeedError(400, null)).toContain("ticker symbols");
     expect(stockFeedError(504, null)).toContain("HTTP 504");
+  });
+});
+
+
+describe("Alpaca request diagnostics", () => {
+  it.each(["history", "snapshot"] as const)("identifies the failing %s request and retry count", operation => {
+    const message = stockFeedError(502, { errorCode: "provider-unavailable", diagnostic: { httpStatus: 503, operation, attempts: 2,
+      requestId: "f6b7c39a-bcc1-4304-83ea-feb940c40c0c" } });
+    expect(message).toContain(operation === "history" ? "minute-bar history" : "live snapshot");
+    expect(message).toContain("HTTP 503, 2 attempts");
+    expect(message).toContain("Request ID: f6b7c39a-bcc1-4304-83ea-feb940c40c0c");
+  });
+
+  it("preserves Alpaca's documented 32-character hexadecimal request ID", () => {
+    const id = "0d29ba8d9a51ee0eb4e7bbaa9acff223";
+    expect(stockFeedError(502, { errorCode: "provider-unavailable", diagnostic: { httpStatus: 500, operation: "history", attempts: 2, requestId: id } })).toContain(`Request ID: ${id}.`);
+  });
+
+  it("does not mistake a redirect for a provider outage", () => {
+    const message = stockFeedError(502, { errorCode: "provider-http-error", diagnostic: { httpStatus: 302, operation: "history", attempts: 1 } });
+    expect(message).toContain("HTTP 302, 1 attempt.");
+    expect(message).not.toContain("service error");
+  });
+
+  it.each([null, "secret-key", { httpStatus: "secret-key" },
+    { httpStatus: 503, operation: "secret-key", attempts: 2 }, { httpStatus: 503, operation: "history", attempts: "secret-key" },
+    { httpStatus: 503.5, operation: "history", attempts: 2 }, { httpStatus: 503, operation: "history", attempts: 3 },
+    { httpStatus: 503, operation: "history", attempts: 2, requestId: "secret-key" },
+  ])("cannot reflect untrusted diagnostic fields: %j", diagnostic => {
+    const message = stockFeedError(502, { errorCode: "provider-unavailable", diagnostic, message: "secret-key" });
+    expect(message).not.toContain("secret-key");
+    expect(message).not.toContain("Request ID:");
   });
 });

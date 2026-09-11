@@ -23,6 +23,7 @@ public sealed record StockLatestTrade(double Price, DateTimeOffset At);
 public sealed record StockLatestQuote(double Bid, double Ask, double BidSize, double AskSize, DateTimeOffset At);
 public sealed record StockMarketData(string Ticker, IReadOnlyList<StockMinuteBar> Bars, StockLatestTrade? LatestTrade,
     StockLatestQuote? LatestQuote, double? PreviousClose, double? DayVolume, bool HistoryComplete);
+public sealed record StockProviderDiagnostic(int HttpStatus, string Operation, int Attempts, string? RequestId = null);
 public sealed record StockScanResponse(string Status, string Provider, string Feed, DateTimeOffset AsOf,
-    string? Message, IReadOnlyList<StockMarketData> Rows, string? ErrorCode = null);
+    string? Message, IReadOnlyList<StockMarketData> Rows, string? ErrorCode = null, StockProviderDiagnostic? Diagnostic = null);
 public sealed record StockScanResult(int StatusCode, StockScanResponse Body);

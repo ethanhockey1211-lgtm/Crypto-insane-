@@ -88,3 +88,11 @@ The lower entry reference remains the trigger level plus 0.02 ATR. The upper lim
 A budget that cannot fund one whole share now leaves the qualifying setup and per-share comparison visible, with a sizing warning. It disables loading the plan until the budget supports it. A blank cost field shows an explicit error and a restore-default action. If no current entry qualifies, the board lists the missing data, price, pattern or cost checks.
 
 Snapshots are fetched after history pagination and validated against their receipt time so request latency cannot turn genuine current observations into future timestamps. The public configured status only confirms that server settings are present; provider authentication is checked when you connect and scan.
+
+## Alpaca service-error recovery
+
+A failed history or snapshot GET with HTTP 408, 500, 502, 503 or 504 gets one additional attempt within the same scan. Backoff is 750 milliseconds, or the provider's longer `Retry-After` value when that delay is at most two seconds. Longer requested delays suppress the inline retry; the existing 30-second polling cycle remains unchanged. Authentication, access, invalid-request and rate-limit errors are not retried inline. Both attempts count toward the provider request limit and share the existing 20-second scan timeout. Cancellation stops the retry. Failed scans never return old prices as new observations.
+
+If the request still fails, the diagnostic identifies **minute-bar history** or **live snapshot**, the actual upstream HTTP status and number of attempts. A valid hexadecimal `X-Request-ID` is included when supplied by Alpaca; this can help their support team locate a specific failed request. Provider response bodies, credential headers, arbitrary request IDs and redirects are not forwarded. [Alpaca request-ID documentation](https://docs.alpaca.markets/us/docs/getting-started-with-alpaca-market-data)
+
+`provider-unavailable` now represents an upstream server error. Other unexpected HTTP statuses, including redirects, use `provider-http-error` so a request rejection is not mislabeled as a service outage. A public operational status page does not prove that a particular authenticated request succeeded.
