@@ -58,7 +58,7 @@ Review each plan and the final quote in Kraken before placing an order. Kraken d
 
 Private stock-data requests to `GET /api/stocks/scan` carry the personal access code in `X-Stock-Access-Token`. The provider key and secret stay on the backend and are not returned to the browser or logged. Public `GET /api/stocks/status` exposes whether the connection is configured, without credentials or market data. Keep the access code private: it protects both your feed allowance and personal-use access. Alpaca's terms limit personal data use and require permission for publication or distribution; this connection is not a public market-data service. [Alpaca terms, pages 1–2](https://files.alpaca.markets/disclosures/library/TermsAndConditions.pdf)
 
-The backend uses explicitly selected `feed=iex` for bulk [snapshots](https://docs.alpaca.markets/us/reference/stocksnapshots-1) and [one-minute history](https://docs.alpaca.markets/us/reference/stockbars). Requests use a shared cache of up to eight symbol sets with a 30-second lifetime, coalesce matching fetches, and guard upstream traffic at 180 requests per minute, below the Basic plan's documented 200-per-minute allowance. History is bounded to three provider pages and 400 retained bars per symbol; unfinished pagination cannot qualify a setup.
+The backend uses explicitly selected `feed=iex` for bulk [snapshots](https://docs.alpaca.markets/us/reference/stocksnapshots-1) and [one-minute history](https://docs.alpaca.markets/us/reference/stockbars). Requests use a shared cache of up to eight symbol sets with a 20-second lifetime, coalesce matching fetches, and guard upstream traffic at 180 requests per minute, below the Basic plan's documented 200-per-minute allowance. History is bounded to twelve provider pages and 400 retained bars per symbol; unfinished pagination cannot qualify a setup.
 
 If the app remains locked after deployment, check the access code against `Stocks__AccessToken`. If the provider rejects the connection, check both Alpaca credentials in Render and redeploy after correcting them. If you regenerate Alpaca keys, update both Render values. A configured status means settings exist; it does not prove the provider accepted them or that quotes are fresh.
 
@@ -76,3 +76,15 @@ The scanner shows a diagnostic code beside connection failures. These codes cont
 | `provider-rate-limit`, `provider-unavailable`, `provider-timeout`, or `provider-network` | Let the next refresh retry. Persistent failures need a connection/service check. |
 
 Share only the diagnostic message when asking for help. The scanner never displays Alpaca's raw error response or your keys. A generic HTTP error without a diagnostic code may come from an older deployment or hosting proxy and does not establish that your keys are wrong.
+
+## Trade discovery and entry lifetime
+
+All visible watchlist stocks are assessed for research, including starter stocks whose Kraken availability has not been checked. Stocks explicitly marked unavailable stay excluded. **Use entry plan** requires your availability confirmation; this does not place an order.
+
+The scanner evaluates completed opening-range breakouts, VWAP reclaims, pullbacks and 20-bar breakouts. A valid trigger can remain under review for three elapsed minutes after its candle closes. It keeps the original trigger's ATR, volume test, entry ceiling, stop and targets. Every subsequent completed minute must be present, hold the trigger on its close and remain above the original stop. A new scan with a missing latest completed minute cannot retain an entry; quotes and trades must still be at most 45 seconds old. The current bar freshness ceiling is 60 seconds after its close.
+
+The lower entry reference remains the trigger level plus 0.02 ATR. The upper limit is the greater of that lower reference or the confirming close, plus 0.25 ATR. A confirming close more than 1 ATR beyond its trigger is rejected. This accommodates a completed crossing candle while keeping a fixed limit on follow-through; later price movement cannot expand an existing plan. Targets remain hypothetical 2R planning levels, with the 1.5R after-cost filter unchanged.
+
+A budget that cannot fund one whole share now leaves the qualifying setup and per-share comparison visible, with a sizing warning. It disables loading the plan until the budget supports it. A blank cost field shows an explicit error and a restore-default action. If no current entry qualifies, the board lists the missing data, price, pattern or cost checks.
+
+Snapshots are fetched after history pagination and validated against their receipt time so request latency cannot turn genuine current observations into future timestamps. The public configured status only confirms that server settings are present; provider authentication is checked when you connect and scan.

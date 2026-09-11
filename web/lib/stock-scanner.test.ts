@@ -46,12 +46,13 @@ describe("native IEX stock setup engine", () => {
     expect(row.evidence.join(" ")).toContain("bar-based IEX estimate");
   });
 
-  it("does not trade an unconfirmed or unavailable Kraken stock even with a strong trigger", () => {
-    for (const availability of ["unconfirmed", "unavailable"] as const) {
-      const row = scan(fixture(), NOW, { ...ITEM, availability });
-      expect(row.state).toBe("unavailable"); noPlan(row);
-      expect(row.reasons.join(" ")).toContain("Kraken");
-    }
+  it("shows research for unconfirmed starter stocks while still excluding stocks marked unavailable", () => {
+    const research = scan(fixture(), NOW, { ...ITEM, availability: "unconfirmed" });
+    expect(research.state).toBe("entry-zone");
+    expect(research.entry).not.toBeNull();
+    expect(research.details!.cautions.join(" ")).toContain("availability is unconfirmed");
+    const hidden = scan(fixture(), NOW, { ...ITEM, availability: "unavailable" });
+    expect(hidden.state).toBe("unavailable"); noPlan(hidden);
   });
 
   it("recognizes a completed VWAP reclaim independently of a resistance breakout", () => {
@@ -131,7 +132,7 @@ describe("native IEX stock setup engine", () => {
     const data = fixture(); data.bars = data.bars.map(bar => ({ ...bar, at: iso(Date.parse(bar.at) - 24 * 60 * MINUTE) }));
     let row = scan(data); expect(row.state).toBe("blocked"); expect(row.barAt).toBeNull(); noPlan(row);
     row = scan(fixture(), NOW + 121_000); expect(row.state).toBe("blocked");
-    expect(row.reasons.join(" ")).toContain("120 seconds"); noPlan(row);
+    expect(row.reasons.join(" ")).toContain("60 seconds"); noPlan(row);
   });
 
   it("needs every opening minute for an opening-range label, without inventing missing IEX bars", () => {
@@ -294,9 +295,9 @@ describe("explainable stock setup details", () => {
     expect(watch.details!.triggerPrice).toBe(100.2);
     expect(watch.details!.confirmation).toContain("pattern confirmation alone does not qualify an entry");
     expect(watch.details!.cautions.join(" ")).toContain("Await IEX closed-bar volume");
-    const unavailable = scan(fixture(), NOW, { ...ITEM, availability: "unconfirmed" });
+    const unavailable = scan(fixture(), NOW, { ...ITEM, availability: "unavailable" });
     expect(unavailable.details!.triggerConfirmed).toBe(true); noPlan(unavailable);
-    expect(unavailable.details!.cautions.join(" ")).toContain("Confirm this stock is available in your Kraken account");
+    expect(unavailable.details!.cautions.join(" ")).toContain("Marked unavailable in your Kraken account");
     const near = fixture(); near.bars[21] = { ...near.bars[20], at: iso(START + 21 * MINUTE), close: 100.12, open: 100.11 };
     const conditional = scan(near);
     expect(conditional.state).toBe("watch"); noPlan(conditional);
@@ -359,7 +360,7 @@ describe("displayed stock entry freshness", () => {
     const payload = response(), setup = scanStockSetups(payload, [ITEM], NOW)[0];
     payload.asOf = iso(NOW - 60_000); expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(true);
     payload.asOf = iso(NOW - 60_001); expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(false);
-    const lastFresh = NOW + 115_000;
+    const lastFresh = NOW + 55_000;
     payload.asOf = iso(lastFresh); payload.rows[0].latestTrade!.at = iso(lastFresh); payload.rows[0].latestQuote!.at = iso(lastFresh);
     expect(stockSetupIsCurrent(setup, payload, lastFresh)).toBe(true);
     expect(stockSetupIsCurrent(setup, payload, lastFresh + 1)).toBe(false);
@@ -387,5 +388,91 @@ describe("displayed stock entry freshness", () => {
     expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(true);
     payload.rows[0].latestTrade!.at = iso(NOW + 5_001);
     expect(stockSetupIsCurrent(setup, payload, NOW)).toBe(false);
+  });
+});
+
+function followThrough(data: StockMarketData, count: number): number {
+  for (let i = 0; i < count; i++) data.bars.push({ at: iso(START + (22 + i) * MINUTE),
+    open: 100.23, close: 100.23, high: 100.24, low: 100.21, volume: 400, vwap: 100.23 });
+  const now = NOW + count * MINUTE;
+  data.latestTrade = { price: 100.23, at: iso(now) };
+  data.latestQuote = { bid: 100.22, ask: 100.24, bidSize: 5, askSize: 8, at: iso(now) };
+  return now;
+}
+
+describe("stock trigger discovery across scans", () => {
+  it("accepts a normal completed breakout beyond the old quarter-ATR ceiling", () => {
+    const data = fixture();
+    data.bars[21] = { ...data.bars[21], close: 100.35, high: 100.37 };
+    data.latestTrade!.price = 100.35; data.latestQuote!.bid = 100.34; data.latestQuote!.ask = 100.36;
+    const result = scan(data);
+    expect(result.state, result.reasons.join(" ")).toBe("entry-zone");
+    expect(result.price!).toBeGreaterThan(result.details!.triggerPrice! + 0.27 * result.atr!);
+    expect(result.entryMax!).toBeCloseTo(100.35 + 0.25 * result.atr!);
+  });
+
+  it("retains original geometry and trigger volume through quiet follow-through candles", () => {
+    const original = scan(), data = fixture(), now = followThrough(data, 2);
+    const retained = scan(data, now);
+    expect(retained.state, retained.reasons.join(" ")).toBe("entry-zone");
+    expect(retained.triggerAt).toBe(original.triggerAt);
+    expect(retained.barAt).toBe(data.bars.at(-1)!.at);
+    expect([retained.entry, retained.entryMax, retained.stop, retained.target]).toEqual([original.entry, original.entryMax, original.stop, original.target]);
+    expect(retained.relativeVolume!).toBeLessThan(1);
+    expect(retained.details!.confirmation).toContain("Trigger bar: 2.00×");
+    expect(stockSetupIsCurrent(retained, response(data, now), now)).toBe(true);
+  });
+
+  it("expires the original trigger by elapsed time, including between scans", () => {
+    const data = fixture(); followThrough(data, 3);
+    const boundary = START + 25 * MINUTE;
+    data.latestTrade!.at = iso(boundary); data.latestQuote!.at = iso(boundary);
+    const payload = response(data, boundary), current = scanStockSetups(payload, [ITEM], boundary)[0];
+    expect(current.state).toBe("entry-zone");
+    expect(stockSetupIsCurrent(current, payload, boundary)).toBe(true);
+    expect(stockSetupIsCurrent(current, payload, boundary + 1)).toBe(false);
+    expect(scan(data, boundary + 1).state).toBe("watch");
+    expect(stockSetupIsCurrent({ ...current, triggerAt: "invalid" }, payload, boundary)).toBe(false);
+  });
+
+  it.each(["stop", "below-trigger", "missing-minute"] as const)("does not revive an invalidated trigger after a recovery: %s", cause => {
+    const data = fixture(), now = followThrough(data, 2);
+    if (cause === "stop") data.bars[22].low = scan().stop!;
+    if (cause === "below-trigger") Object.assign(data.bars[22], { close: 100.15, low: 100.14, vwap: 100.15 });
+    if (cause === "missing-minute") data.bars.splice(22, 1);
+    const result = scan(data, now);
+    expect(result.state).not.toBe("entry-zone"); noPlan(result);
+  });
+
+  it("withdraws a retained plan when a trailing completed minute is missing", () => {
+    const data = fixture(), firstNow = followThrough(data, 1);
+    const current = scan(data, firstNow);
+    const missingMinuteNow = firstNow + MINUTE;
+    data.latestTrade!.at = iso(missingMinuteNow); data.latestQuote!.at = iso(missingMinuteNow);
+    const payload = response(data, missingMinuteNow);
+    expect(stockSetupIsCurrent(current, payload, missingMinuteNow)).toBe(false);
+    const result = scanStockSetups(payload, [ITEM], missingMinuteNow)[0];
+    expect(result.state).toBe("blocked"); noPlan(result);
+    expect(result.reasons.join(" ")).toContain("latest completed IEX minute is missing");
+  });
+
+  it("cannot rescue an under-volume trigger with a later high-volume candle", () => {
+    const data = fixture(); data.bars[21].volume = 500;
+    const now = followThrough(data, 1); data.bars[22].volume = 10_000;
+    const result = scan(data, now);
+    expect(result.state).toBe("watch"); noPlan(result);
+    expect(result.reasons.join(" ")).toContain("This trigger measured 0.50×");
+  });
+
+  it("rejects oversized confirming candles and prices above the fixed retained ceiling", () => {
+    const data = fixture(); data.bars[21] = { ...data.bars[21], high: 100.82, close: 100.8 };
+    data.latestTrade!.price = 100.8; data.latestQuote!.bid = 100.79; data.latestQuote!.ask = 100.81;
+    const oversized = scan(data);
+    expect(oversized.state).toBe("extended"); noPlan(oversized);
+    expect(oversized.reasons.join(" ")).toContain("more than 1 ATR");
+    const retained = fixture(), now = followThrough(retained, 1);
+    retained.latestQuote!.ask = scan().entryMax! + 0.01;
+    const result = scan(retained, now);
+    expect(result.state).toBe("extended"); noPlan(result);
   });
 });

@@ -16,7 +16,7 @@ export function useStockRiskSettings() {
         const next = { ...defaults };
         for (const key of Object.keys(defaults) as (keyof StockRiskDraft)[]) {
           const value = (saved as Record<string, unknown>)[key];
-          if (typeof value === "string" && value.length <= 30 && Number.isFinite(Number(value)) && Number(value) >= 0) next[key] = value;
+          if (typeof value === "string" && (key !== "cost" || value.trim() !== "") && value.length <= 30 && Number.isFinite(Number(value)) && Number(value) >= 0) next[key] = value;
         }
         setRisk(next);
       }

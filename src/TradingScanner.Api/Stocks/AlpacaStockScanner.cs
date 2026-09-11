@@ -13,7 +13,7 @@ public sealed class AlpacaStockScanner : IDisposable
 {
     public const int MaxSymbols = 40;
     public const int RefreshSeconds = 30;
-    private const int MaxPages = 3, MaxCacheEntries = 8, MaxResponseBytes = 4 * 1024 * 1024;
+    private const int MaxPages = 12, CacheSeconds = 20, MaxCacheEntries = 8, MaxResponseBytes = 4 * 1024 * 1024;
     private static readonly TimeZoneInfo Eastern = FindEastern();
     private static readonly Regex TickerSyntax = new("^[A-Z]{1,5}(?:[.-][A-Z]{1,2})?$", RegexOptions.CultureInvariant);
     private static readonly Regex TimestampSyntax = new(@"\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.(?<fraction>[0-9]{1,9}))?(?:Z|[+-][0-9]{2}:[0-9]{2})\z", RegexOptions.CultureInvariant);
@@ -50,12 +50,12 @@ public sealed class AlpacaStockScanner : IDisposable
             await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
             entered = true;
             var now = _time.GetUtcNow();
-            foreach (var expired in _cache.Where(pair => now - pair.Value.At >= TimeSpan.FromSeconds(RefreshSeconds) || now < pair.Value.At).Select(pair => pair.Key).ToArray())
+            foreach (var expired in _cache.Where(pair => now - pair.Value.At >= TimeSpan.FromSeconds(CacheSeconds) || now < pair.Value.At).Select(pair => pair.Key).ToArray())
                 _cache.Remove(expired);
             if (_cache.TryGetValue(key, out var cached)) return new(200, cached.Response);
             var response = await FetchAsync(symbols, now, linked.Token).ConfigureAwait(false);
             if (_cache.Count >= MaxCacheEntries) _cache.Remove(_cache.MinBy(pair => pair.Value.At).Key);
-            _cache[key] = new(now, response);
+            _cache[key] = new(response.AsOf, response);
             return new(200, response);
         }
         catch (ProviderFailure failure) { return Failure(failure.StatusCode, "error", failure.SafeMessage, failure.ErrorCode); }
@@ -97,8 +97,6 @@ public sealed class AlpacaStockScanner : IDisposable
         var end = now < close ? now : close;
         var sessionStarted = local.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && now >= open.AddMinutes(1);
         var encoded = Uri.EscapeDataString(string.Join(',', symbols));
-        using var snapshots = await GetJsonAsync($"/v2/stocks/snapshots?symbols={encoded}&feed=iex", ct).ConfigureAwait(false);
-        if (snapshots.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException();
         var bars = symbols.ToDictionary(symbol => symbol, _ => new SortedDictionary<DateTimeOffset, StockMinuteBar>(), StringComparer.Ordinal);
         var invalidHistory = new HashSet<string>(StringComparer.Ordinal);
         var truncated = false;
@@ -145,6 +143,11 @@ public sealed class AlpacaStockScanner : IDisposable
             }
         }
 
+        // Fetch live prices last: pagination must not consume their freshness window. Validate
+        // against receipt time, since a slow request can legitimately contain newer observations.
+        using var snapshots = await GetJsonAsync($"/v2/stocks/snapshots?symbols={encoded}&feed=iex", ct).ConfigureAwait(false);
+        if (snapshots.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException();
+        var receivedAt = _time.GetUtcNow();
         var rows = new List<StockMarketData>(symbols.Length);
         foreach (var symbol in symbols)
         {
@@ -153,11 +156,12 @@ public sealed class AlpacaStockScanner : IDisposable
             // IEX legitimately omits minutes without qualifying trades. Completeness means the
             // paginated response is intact; setup rules must separately require the bars they use.
             var complete = sessionStarted && ordered.Length > 0 && !truncated && !invalidHistory.Contains(symbol);
-            rows.Add(new(symbol, ordered, ParseTrade(snapshot, now), ParseQuote(snapshot, now),
+            rows.Add(new(symbol, ordered, ParseTrade(snapshot, receivedAt), ParseQuote(snapshot, receivedAt),
                 PreviousClose(snapshot, open), DayVolume(snapshot, local.Date), complete));
         }
-        return new("ready", "Alpaca", "iex", now,
-            sessionStarted ? null : "Current-day regular-session history begins after 09:30 New York time. Entries require complete, fresh data.", rows);
+        return new("ready", "Alpaca", "iex", receivedAt,
+            truncated ? "Alpaca history pagination was incomplete. Refresh the scan; entries are paused until every page is available."
+                : sessionStarted ? null : "Current-day regular-session history begins after 09:30 New York time. Entries require complete, fresh data.", rows);
     }
 
     private async Task<JsonDocument> GetJsonAsync(string path, CancellationToken ct)

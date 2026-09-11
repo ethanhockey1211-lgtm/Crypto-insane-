@@ -60,11 +60,12 @@ describe("stock opportunity economics", () => {
     expect(item.position!.shares * 1.1 + 1.1).toBeGreaterThan(100);
   });
 
-  it("rejects a supplied budget that cannot cover one whole share", () => {
+  it("keeps a qualifying market setup visible when the budget cannot cover one whole share", () => {
     for (const settings of [{ ...SETTINGS, cash: 100 }, { ...SETTINGS, account: 1 }]) {
       const item = build(settings);
-      expect(item.eligible).toBe(false);
+      expect(item.eligible).toBe(true);
       expect(item.position?.valid).toBe(false);
+      expect(item.netRewardRisk).toBeGreaterThan(1.5);
       expect(item.reason).toContain("one whole share");
       expect(item.entry).toBe(100);
     }

@@ -138,9 +138,11 @@ export function StockEntryScanner({ watchlist, onOpen, onUsePlan, onConfirm, ris
   };
   const usePlan = useCallback((setup: StockSetup, notes: string) => {
     if (!enabled || !current(setup, feed.data, Date.now()) || !setup.setup || setup.entry == null || setup.stop == null || setup.target == null) return;
-    if (!buildStockOpportunities([setup], feed.data, Date.now(), opportunitySettings)[0]?.eligible) return;
+    if (watchlist.find(item => item.symbol === setup.symbol)?.availability !== "confirmed") return;
+    const opportunity = buildStockOpportunities([setup], feed.data, Date.now(), opportunitySettings)[0];
+    if (!opportunity?.eligible || opportunity.position?.valid === false) return;
     onUsePlan({ id: crypto.randomUUID(), symbol: setup.symbol, setup: setup.setup, entry: setup.entryMax ?? setup.entry, stop: setup.stop, target: setup.target, asOf: feed.data!.asOf, notes });
-  }, [enabled, feed.data, onUsePlan, opportunitySettings]);
+  }, [enabled, feed.data, onUsePlan, opportunitySettings, watchlist]);
   return <section className="panel rounded-lg p-3 sm:p-4 mb-3" aria-label="Automatic stock setups">
     <div className="flex flex-wrap justify-between items-start gap-3">
       <div><div className="eyebrow !text-accent">Automatic stock scanner · Alpaca IEX</div><h2 className="text-xl sm:text-2xl font-semibold mt-1">Stocks to review now</h2><p className="text-sm text-ink-2 mt-1">Find a setup, understand the evidence, and compare its entry plan with your budget.</p></div>
@@ -157,6 +159,7 @@ export function StockEntryScanner({ watchlist, onOpen, onUsePlan, onConfirm, ris
     {notice && <p role="status" className="text-sm text-accent mt-2">{notice}</p>}
     {feed.error && <p role="alert" className="text-warn text-sm mt-3">{feed.error} Existing cards are reference only.</p>}
     <div className="flex flex-wrap justify-between gap-2 text-xs text-ink-3 mt-3 mb-3"><span>{candidates.length} watchlist stocks · confirmed stocks scanned first · 40 maximum</span><span>{feed.loading ? "Checking stock data…" : feed.data ? `Data captured ${new Date(feed.data.asOf).toLocaleTimeString()} · scans every 30 seconds` : "Waiting for a connected feed"}</span></div>
+    {feed.data?.message && <p className="text-sm text-warn mb-3" role="status">{feed.data.message}</p>}
     {!!events.length && alerts && <details className="border border-line-strong rounded-md p-3 mb-3"><summary className="cursor-pointer text-sm">Stock entry alerts · {events[0].symbol.split(":")[1]} at {new Date(events[0].at).toLocaleTimeString()} · inspect current status</summary><p className="text-xs text-ink-3 my-2">Historical entry-zone events, not current instructions. Maximum one per stock every 10 minutes while this tab is open.</p>{events.map(event => <button key={event.id} className="block text-sm text-accent py-1" onClick={() => onOpen(event.symbol)}>{event.symbol} · entry reference {money(event.entry)} · {new Date(event.at).toLocaleTimeString()}</button>)}</details>}
     {!setups.length ? <div className="border border-line rounded-md p-5 text-sm text-ink-2">{!candidates.length ? "Add or restore stocks in your research watchlist to scan them." : feed.status?.configured && access ? "The first scan will appear here when stock data is available. Setups need at least 21 completed regular-session minute bars." : "Connect the private data feed to receive ranked stock setups. Your free charts and notebook remain available below."}</div>
       : <StockOpportunityBoard opportunities={opportunities} response={feed.data} enabled={enabled} now={now} risk={risk} onRiskChange={onRiskChange} watchlist={watchlist} onOpen={onOpen} onUsePlan={usePlan} onConfirm={onConfirm} />}
