@@ -399,7 +399,8 @@ public class AlpacaStockScannerTests
         {
             (401, "provider-unauthorized"), (403, "provider-forbidden"),
             (400, "provider-request"), (404, "provider-request"), (422, "provider-request"),
-            (429, "provider-rate-limit"), (500, "provider-unavailable"), (502, "provider-unavailable"), (302, "provider-unavailable")
+            (429, "provider-rate-limit"), (500, "provider-unavailable"), (502, "provider-unavailable"), (503, "provider-unavailable"), (504, "provider-unavailable"), (408, "provider-timeout"),
+            (302, "provider-http-error"), (405, "provider-http-error"), (451, "provider-http-error")
         }
         select new object[] { bars, item.Item1, item.Item2 };
 
@@ -417,10 +418,109 @@ public class AlpacaStockScannerTests
         var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
         Assert.Equal(upstream == 429 ? 429 : 502, result.StatusCode);
         Assert.Equal("error", result.Body.Status); Assert.Equal(code, result.Body.ErrorCode); Assert.Empty(result.Body.Rows);
-        Assert.Equal(failBars ? 3 : 4, handler.Requests.Count);
+        var retryCount = upstream is 408 or 500 or 502 or 503 or 504 ? 1 : 0;
+        Assert.Equal((failBars ? 3 : 4) + retryCount, handler.Requests.Count);
+        Assert.Equal(upstream, result.Body.Diagnostic!.HttpStatus);
+        Assert.Equal(failBars ? "history" : "snapshot", result.Body.Diagnostic.Operation);
+        Assert.Equal(1 + retryCount, result.Body.Diagnostic.Attempts);
         Assert.False(string.IsNullOrWhiteSpace(result.Body.Message));
         var json = JsonSerializer.Serialize(result.Body);
         Assert.DoesNotContain(Key, json); Assert.DoesNotContain(Secret, json); Assert.DoesNotContain(Token, json);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Transient_HTTP_failure_recovers_within_the_same_scan_without_restarting_other_requests(bool failBars)
+    {
+        var attempts = 0;
+        var handler = new Handler((request, _) =>
+        {
+            var target = request.RequestUri!.AbsolutePath.EndsWith(failBars ? "bars" : "snapshots");
+            return Task.FromResult(target && ++attempts == 1 ? Json("untrusted provider body", HttpStatusCode.ServiceUnavailable)
+                : Json(request.RequestUri!.AbsolutePath.EndsWith("bars") ? Bars(Bar()) : Snapshot));
+        });
+        using var scanner = Scanner(handler);
+        var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
+        Assert.Equal(200, result.StatusCode);
+        Assert.Equal("ready", result.Body.Status);
+        Assert.Null(result.Body.Diagnostic);
+        Assert.True(result.Body.Rows[0].HistoryComplete);
+        Assert.NotNull(result.Body.Rows[0].LatestQuote);
+        Assert.Equal(3, handler.Requests.Count);
+        var retried = handler.Requests.Where(request => request.Uri.AbsolutePath.EndsWith(failBars ? "bars" : "snapshots")).ToArray();
+        Assert.Equal(2, retried.Length);
+        Assert.Equal(retried[0].Uri, retried[1].Uri);
+    }
+
+    [Fact]
+    public async Task A_transient_second_page_error_retries_its_own_token_and_preserves_prior_history()
+    {
+        var secondAttempts = 0;
+        var handler = new Handler((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath.EndsWith("snapshots") ? Json(Snapshot)
+            : !request.RequestUri.Query.Contains("page_token") ? Json(Bars(Bar(), "second"))
+            : ++secondAttempts == 1 ? Json("unavailable", HttpStatusCode.BadGateway)
+            : Json(Bars(Bar("2026-09-09T13:31:00Z")))));
+        using var scanner = Scanner(handler);
+        var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
+        Assert.Equal(200, result.StatusCode);
+        Assert.True(result.Body.Rows[0].HistoryComplete);
+        Assert.Equal(2, result.Body.Rows[0].Bars.Count);
+        Assert.Equal(4, handler.Requests.Count);
+        Assert.Equal(2, handler.Requests.Count(request => request.Uri.Query.Contains("page_token=second")));
+    }
+
+    [Fact]
+    public async Task Cancellation_during_backoff_prevents_the_retry()
+    {
+        var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new Handler((_, _) => { first.TrySetResult(); return Task.FromResult(Json("unavailable", HttpStatusCode.ServiceUnavailable)); });
+        using var scanner = Scanner(handler);
+        using var cancelled = new CancellationTokenSource();
+        var task = scanner.ScanAsync("NVDA", Token, cancelled.Token);
+        await first.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
+        Assert.Single(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_long_Retry_After_is_not_ignored_or_allowed_to_consume_the_scan_budget(bool useDate)
+    {
+        var handler = new Handler((_, _) =>
+        {
+            var response = Json("unavailable", HttpStatusCode.ServiceUnavailable);
+            response.Headers.RetryAfter = useDate ? new(Now.AddSeconds(30)) : new(TimeSpan.FromSeconds(30));
+            return Task.FromResult(response);
+        });
+        using var scanner = Scanner(handler);
+        var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
+        Assert.Equal("provider-unavailable", result.Body.ErrorCode);
+        Assert.Equal(503, result.Body.Diagnostic!.HttpStatus);
+        Assert.Equal(1, result.Body.Diagnostic.Attempts);
+        Assert.Single(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData("f6b7c39a-bcc1-4304-83ea-feb940c40c0c", "f6b7c39a-bcc1-4304-83ea-feb940c40c0c")]
+    [InlineData("0d29ba8d9a51ee0eb4e7bbaa9acff223", "0d29ba8d9a51ee0eb4e7bbaa9acff223")]
+    [InlineData("secret-provider-key", null)]
+    public async Task Diagnostics_include_only_a_hexadecimal_request_id_and_never_the_provider_body(string header, string? expected)
+    {
+        var handler = new Handler((_, _) =>
+        {
+            var response = Json(Key + Secret + Token, HttpStatusCode.Forbidden);
+            response.Headers.TryAddWithoutValidation("X-Request-ID", header);
+            return Task.FromResult(response);
+        });
+        using var scanner = Scanner(handler);
+        var result = await scanner.ScanAsync("NVDA", Token, CancellationToken.None);
+        Assert.Equal(expected, result.Body.Diagnostic!.RequestId);
+        var json = JsonSerializer.Serialize(result.Body);
+        Assert.DoesNotContain(Key, json); Assert.DoesNotContain(Secret, json); Assert.DoesNotContain(Token, json);
+        Assert.DoesNotContain("secret-provider-key", json);
     }
 
     [Theory]

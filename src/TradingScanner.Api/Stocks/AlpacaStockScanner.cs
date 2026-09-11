@@ -58,7 +58,7 @@ public sealed class AlpacaStockScanner : IDisposable
             _cache[key] = new(response.AsOf, response);
             return new(200, response);
         }
-        catch (ProviderFailure failure) { return Failure(failure.StatusCode, "error", failure.SafeMessage, failure.ErrorCode); }
+        catch (ProviderFailure failure) { return Failure(failure.StatusCode, "error", failure.SafeMessage, failure.ErrorCode, failure.Diagnostic); }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         { return Failure(502, "error", "Alpaca did not respond in time. Wait a moment, then refresh the stock scan.", "provider-timeout"); }
         catch (Exception ex) when (ex is HttpRequestException or IOException)
@@ -166,6 +166,19 @@ public sealed class AlpacaStockScanner : IDisposable
 
     private async Task<JsonDocument> GetJsonAsync(string path, CancellationToken ct)
     {
+        // Retry only idempotent requests with a transient HTTP response. The shared scan
+        // timeout, cancellation and provider quota still apply to every attempt.
+        try { return await GetJsonAttemptAsync(path, 1, ct).ConfigureAwait(false); }
+        catch (ProviderFailure failure) when (failure.Diagnostic?.HttpStatus is 408 or 500 or 502 or 503 or 504
+            && failure.RetryDelay <= TimeSpan.FromSeconds(2))
+        {
+            await Task.Delay(failure.RetryDelay, _time, ct).ConfigureAwait(false);
+            return await GetJsonAttemptAsync(path, 2, ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<JsonDocument> GetJsonAttemptAsync(string path, int attempt, CancellationToken ct)
+    {
         var now = _time.GetUtcNow();
         while (_requests.TryPeek(out var at) && now - at >= TimeSpan.FromMinutes(1)) _requests.Dequeue();
         if (_requests.Count >= 180) throw new ProviderFailure(429, "provider-rate-limit", "The stock data request limit was reached. Wait a minute before refreshing.");
@@ -174,19 +187,38 @@ public sealed class AlpacaStockScanner : IDisposable
         request.Headers.Add("APCA-API-KEY-ID", _options.ApiKey.Trim());
         request.Headers.Add("APCA-API-SECRET-KEY", _options.ApiSecret.Trim());
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) throw response.StatusCode switch
+        if (!response.IsSuccessStatusCode)
         {
-            HttpStatusCode.Unauthorized => new ProviderFailure(502, "provider-unauthorized",
-                "Alpaca rejected the API credentials. In Render, replace Stocks__ApiKey and Stocks__ApiSecret with the Key ID and Secret Key from the same Alpaca key pair, then save and deploy."),
-            HttpStatusCode.Forbidden => new ProviderFailure(502, "provider-forbidden",
-                "Alpaca denied this IEX data request. Check that the Alpaca account has stock market-data access and that Render has its matching Key ID and Secret Key. Contact Alpaca if access is still denied."),
-            HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity => new ProviderFailure(502, "provider-request",
-                "Alpaca rejected the stock-data request. Refresh with one standard US ticker such as AAPL; if it still fails, the scanner request needs checking."),
-            HttpStatusCode.TooManyRequests => new ProviderFailure(429, "provider-rate-limit",
-                "Alpaca's stock data request limit was reached. Wait a minute before refreshing."),
-            _ => new ProviderFailure(502, "provider-unavailable",
-                "Alpaca could not serve stock data right now. Wait a moment, then refresh the stock scan.")
-        };
+            var failure = response.StatusCode switch
+            {
+                HttpStatusCode.Unauthorized => new ProviderFailure(502, "provider-unauthorized",
+                    "Alpaca rejected the API credentials. In Render, replace Stocks__ApiKey and Stocks__ApiSecret with the Key ID and Secret Key from the same Alpaca key pair, then save and deploy."),
+                HttpStatusCode.Forbidden => new ProviderFailure(502, "provider-forbidden",
+                    "Alpaca denied this IEX data request. Check that the Alpaca account has stock market-data access and that Render has its matching Key ID and Secret Key. Contact Alpaca if access is still denied."),
+                HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity => new ProviderFailure(502, "provider-request",
+                    "Alpaca rejected the stock-data request. Refresh with one standard US ticker such as AAPL; if it still fails, the scanner request needs checking."),
+                HttpStatusCode.TooManyRequests => new ProviderFailure(429, "provider-rate-limit",
+                    "Alpaca's stock data request limit was reached. Wait a minute before refreshing."),
+                HttpStatusCode.RequestTimeout => new ProviderFailure(502, "provider-timeout",
+                    "Alpaca timed out while serving stock data. The next scanner cycle will try again."),
+                _ when (int)response.StatusCode >= 500 => new ProviderFailure(502, "provider-unavailable",
+                    "Alpaca could not serve stock data right now. The next scanner cycle will try again."),
+                _ => new ProviderFailure(502, "provider-http-error",
+                    "Alpaca returned an unexpected HTTP response. Check the status and operation in the diagnostic.")
+            };
+            string? requestId = null;
+            if (response.Headers.TryGetValues("X-Request-ID", out var ids))
+            {
+                var values = ids.Take(2).ToArray();
+                if (values.Length == 1 && (Guid.TryParseExact(values[0], "N", out _) || Guid.TryParseExact(values[0], "D", out _))) requestId = values[0];
+            }
+            failure.Diagnostic = new((int)response.StatusCode,
+                path.StartsWith("/v2/stocks/bars?", StringComparison.Ordinal) ? "history" : "snapshot", attempt, requestId);
+            var retryAfter = response.Headers.RetryAfter;
+            var requestedDelay = retryAfter?.Delta ?? (retryAfter?.Date is { } retryAt ? retryAt - _time.GetUtcNow() : TimeSpan.Zero);
+            failure.RetryDelay = requestedDelay > TimeSpan.FromMilliseconds(750) ? requestedDelay : TimeSpan.FromMilliseconds(750);
+            throw failure;
+        }
         if (response.Content.Headers.ContentLength > MaxResponseBytes) throw new JsonException();
         await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         using var memory = new MemoryStream();
@@ -261,8 +293,8 @@ public sealed class AlpacaStockScanner : IDisposable
         return DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture,
             DateTimeStyles.AdjustToUniversal, out var at) ? at : null;
     }
-    private StockScanResult Failure(int statusCode, string status, string message, string? errorCode = null) =>
-        new(statusCode, new(status, "Alpaca", "iex", _time.GetUtcNow(), message, [], errorCode));
+    private StockScanResult Failure(int statusCode, string status, string message, string? errorCode = null, StockProviderDiagnostic? diagnostic = null) =>
+        new(statusCode, new(status, "Alpaca", "iex", _time.GetUtcNow(), message, [], errorCode, diagnostic));
     private static DateTimeOffset ToUtc(DateTime local) => new(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), Eastern));
     private static TimeZoneInfo FindEastern()
     {
@@ -272,5 +304,11 @@ public sealed class AlpacaStockScanner : IDisposable
     public void Dispose() { _http.Dispose(); _gate.Dispose(); }
     private sealed record CacheEntry(DateTimeOffset At, StockScanResponse Response);
     private sealed class ProviderFailure(int statusCode, string errorCode, string safeMessage) : Exception
-    { public int StatusCode { get; } = statusCode; public string ErrorCode { get; } = errorCode; public string SafeMessage { get; } = safeMessage; }
+    {
+        public int StatusCode { get; } = statusCode;
+        public string ErrorCode { get; } = errorCode;
+        public string SafeMessage { get; } = safeMessage;
+        public StockProviderDiagnostic? Diagnostic { get; set; }
+        public TimeSpan RetryDelay { get; set; }
+    }
 }
