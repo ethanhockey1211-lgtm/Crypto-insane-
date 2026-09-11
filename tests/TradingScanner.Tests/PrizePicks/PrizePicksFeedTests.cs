@@ -101,6 +101,20 @@ public class PrizePicksFeedTests
         Assert.Equal(DateTimeOffset.Parse("2026-09-11T14:59:00Z"), lines[0].UpdatedAt);
     }
     [Theory]
+    [InlineData("player_shots_on_goal")]
+    [InlineData("player_goals")]
+    [InlineData("player_assists")]
+    [InlineData("player_points")]
+    [InlineData("player_total_saves")]
+    [InlineData("player_blocked_shots")]
+    public void NHL_PrizePicks_lines_are_supported_without_treating_placeholder_prices_as_probabilities(string stat)
+    {
+        using var json = JsonDocument.Parse(Odds(stat: stat));
+        var lines = PrizePicksFeed.ParseLines(json.RootElement, "icehockey_nhl", Now);
+        Assert.Equal(2, lines.Length); Assert.Equal(stat, lines[0].Stat);
+        Assert.Null(lines[0].Over); Assert.Null(lines[0].Under);
+    }
+    [Theory]
     [InlineData("2026-09-11T14:54:59Z")]
     [InlineData("2026-09-11T15:02:00Z")]
     [InlineData("")]

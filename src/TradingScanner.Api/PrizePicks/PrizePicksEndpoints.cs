@@ -20,7 +20,7 @@ public static class PrizePicksEndpoints
         group.MapGet("/status", (HttpContext context, PrizePicksFeed feed) =>
         {
             context.Response.Headers.CacheControl = "no-store";
-            return Results.Ok(new { configured = feed.Configured });
+            return Results.Ok(new { configured = feed.Configured, source = "The Odds API · PrizePicks", sports = PrizePicksFeed.Sports.Keys });
         });
         group.MapGet("/board", async (HttpContext context, string? sport, PrizePicksFeed feed) =>
         {

@@ -26,7 +26,7 @@ services:
       # Optional private stock scanner: set Stocks__ApiKey, Stocks__ApiSecret and a separate
       # 24+ character Stocks__AccessToken in this service's Environment settings, then redeploy.
       # See docs/stock-signal-setup.md. Never add their values to the repository.
-      # Optional PrizePicks comparisons: set PrizePicks__ApiKey in Render's Environment settings.
+      # PrizePicks daily board + NHL: set PrizePicks__ApiKey in Render's Environment settings.
       # No dashboard access code is required. See docs/prizepicks-tracker.md.
 
 databases:

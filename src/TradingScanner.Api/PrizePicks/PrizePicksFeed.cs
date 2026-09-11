@@ -10,9 +10,10 @@ public sealed class PrizePicksOptions
 }
 
 public sealed record PropLine(string EventId, string Sport, string Matchup, DateTimeOffset StartsAt,
-    string Player, string Stat, double Line, string Bookmaker, DateTimeOffset UpdatedAt, double? Over, double? Under);
+    string Player, string Stat, double Line, string Bookmaker, DateTimeOffset UpdatedAt, double? Over, double? Under, string? Team = null, GameSample[]? History = null);
+public sealed record GameSample(string Date, double Value);
 public sealed record PicksBoard(string Status, string Message, DateTimeOffset AsOf, string Date,
-    string TimeZone, int EventsScanned, int EventsAvailable, PropLine[] Lines);
+    string TimeZone, int EventsScanned, int EventsAvailable, PropLine[] Lines, string Source = "The Odds API · PrizePicks", string? EvidenceMessage = null);
 public sealed record PicksResponse(int StatusCode, PicksBoard Body);
 
 // Read-only provider adapter. Never submits entries or accepts the provider key from a browser.
@@ -24,6 +25,7 @@ public sealed class PrizePicksFeed(HttpClient http, IOptions<PrizePicksOptions> 
         ["basketball_wnba"] = "player_points,player_rebounds,player_assists,player_threes,player_points_rebounds_assists",
         ["americanfootball_nfl"] = "player_pass_yds,player_rush_yds,player_reception_yds,player_receptions,player_pass_tds",
         ["baseball_mlb"] = "pitcher_strikeouts,batter_hits,batter_total_bases",
+        ["icehockey_nhl"] = "player_points,player_assists,player_goals,player_shots_on_goal,player_blocked_shots,player_total_saves",
     };
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly Dictionary<string, (DateTimeOffset Expires, PicksResponse Response)> cache = new();
@@ -36,15 +38,15 @@ public sealed class PrizePicksFeed(HttpClient http, IOptions<PrizePicksOptions> 
         var now = clock.GetUtcNow();
         var date = TimeZoneInfo.ConvertTime(now, Central).ToString("yyyy-MM-dd");
         PicksResponse Empty(int code, string status, string message) => new(code, new(status, message, now, date, "America/Chicago", 0, 0, []));
-        if (!Sports.TryGetValue(sport, out var markets)) return Empty(400, "invalid", "Choose NBA, WNBA, NFL or MLB.");
-        if (!Configured) return Empty(503, "not_configured", "Daily picks need a connected sports feed. Custom analysis is available below.");
+        if (!Sports.TryGetValue(sport, out var markets)) return Empty(400, "invalid", "Choose NHL, NBA, WNBA, NFL or MLB.");
+        if (!Configured) return Empty(503, "not_configured", "Daily picks need your Odds API key saved in the server’s PrizePicks__ApiKey setting. No visitor access code is required. Custom analysis is available below.");
         await gate.WaitAsync(ct);
         try
         {
             var cacheKey = sport + date;
             if (cache.TryGetValue(cacheKey, out var saved) && saved.Expires > now) return saved.Response;
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(35));
+            timeout.CancelAfter(TimeSpan.FromSeconds(45));
             var localStart = DateTime.SpecifyKind(DateTime.ParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Unspecified);
             var start = TimeZoneInfo.ConvertTimeToUtc(localStart, Central);
             var end = TimeZoneInfo.ConvertTimeToUtc(localStart.AddDays(1), Central).AddSeconds(-1);
@@ -70,11 +72,15 @@ public sealed class PrizePicksFeed(HttpClient http, IOptions<PrizePicksOptions> 
                 catch (JsonException) { failures++; }
             }
             var partial = failures > 0 || upcoming.Length > MaxEvents;
+            var boardLines = lines.ToArray();
+            if (sport == "icehockey_nhl" && boardLines.Any(p => p.Bookmaker == "prizepicks"))
+                boardLines = await new NhlPickHistory(http, clock).EnrichAsync(boardLines, timeout.Token);
+            ct.ThrowIfCancellationRequested();
             var response = new PicksResponse(200, new(partial ? "partial" : "ready",
                 partial ? $"Partial coverage: {scanned} of {upcoming.Length} upcoming events scanned. Rankings only cover the returned lines."
                     : upcoming.Length == 0 ? "No upcoming games for this league today (Central time)."
-                    : "Current standard lines from The Odds API. Rankings require matching sportsbook evidence.",
-                now, date, "America/Chicago", scanned, upcoming.Length, lines.ToArray()));
+                    : "Actual standard PrizePicks lines supplied by The Odds API. Recommendations require matching sportsbook evidence or recent official NHL results.",
+                now, date, "America/Chicago", scanned, upcoming.Length, boardLines));
             cache.ClearIfLarge();
             cache[cacheKey] = (clock.GetUtcNow().AddMinutes(2), response);
             return response;
