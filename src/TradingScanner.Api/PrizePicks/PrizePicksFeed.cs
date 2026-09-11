@@ -1,6 +1,4 @@
 using System.Net;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 
@@ -9,7 +7,6 @@ namespace TradingScanner.Api.PrizePicks;
 public sealed class PrizePicksOptions
 {
     public string ApiKey { get; set; } = "";
-    public string AccessToken { get; set; } = "";
 }
 
 public sealed record PropLine(string EventId, string Sport, string Matchup, DateTimeOffset StartsAt,
@@ -32,18 +29,15 @@ public sealed class PrizePicksFeed(HttpClient http, IOptions<PrizePicksOptions> 
     private readonly Dictionary<string, (DateTimeOffset Expires, PicksResponse Response)> cache = new();
     private static readonly TimeZoneInfo Central = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "Central Standard Time" : "America/Chicago");
     private const int MaxEvents = 16;
-    public bool Configured => !string.IsNullOrWhiteSpace(options.Value.ApiKey) && options.Value.AccessToken.Length is >= 24 and <= 512;
+    public bool Configured => !string.IsNullOrWhiteSpace(options.Value.ApiKey);
 
-    public async Task<PicksResponse> ScanAsync(string sport, string? token, CancellationToken ct)
+    public async Task<PicksResponse> ScanAsync(string sport, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
         var date = TimeZoneInfo.ConvertTime(now, Central).ToString("yyyy-MM-dd");
         PicksResponse Empty(int code, string status, string message) => new(code, new(status, message, now, date, "America/Chicago", 0, 0, []));
         if (!Sports.TryGetValue(sport, out var markets)) return Empty(400, "invalid", "Choose NBA, WNBA, NFL or MLB.");
         if (!Configured) return Empty(503, "not_configured", "Daily picks need a connected sports feed. Custom analysis is available below.");
-        if (token is null || token.Length > 512 || !CryptographicOperations.FixedTimeEquals(
-                SHA256.HashData(Encoding.UTF8.GetBytes(token)), SHA256.HashData(Encoding.UTF8.GetBytes(options.Value.AccessToken))))
-            return Empty(401, "unauthorized", "Enter the PrizePicks feed access code configured on your server.");
         await gate.WaitAsync(ct);
         try
         {

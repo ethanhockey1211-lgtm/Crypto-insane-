@@ -25,8 +25,7 @@ public static class PrizePicksEndpoints
         group.MapGet("/board", async (HttpContext context, string? sport, PrizePicksFeed feed) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
-            var values = context.Request.Headers["X-PrizePicks-Access-Token"];
-            var response = await feed.ScanAsync(sport ?? "americanfootball_nfl", values.Count == 1 ? values[0] : null, context.RequestAborted);
+            var response = await feed.ScanAsync(sport ?? "americanfootball_nfl", context.RequestAborted);
             return Results.Json(response.Body, statusCode: response.StatusCode);
         });
         return app;

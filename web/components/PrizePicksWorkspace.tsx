@@ -68,7 +68,7 @@ function CustomPick({ onAdd }: { onAdd: (pick: Pick) => void }) {
 
 export default function PrizePicksWorkspace() {
   const [now, setNow] = useState(Date.now()); const [sport, setSport] = useState("americanfootball_nfl");
-  const [configured, setConfigured] = useState<boolean | null>(null); const [token, setToken] = useState("");
+  const [configured, setConfigured] = useState<boolean | null>(null);
   const [board, setBoard] = useState<PicksBoard | null>(null); const [loading, setLoading] = useState(false); const [feedMessage, setFeedMessage] = useState("");
   const [query, setQuery] = useState(""); const [picks, setPicks] = useState<Pick[]>([]);
   const [entries, setEntries] = useState<SavedEntry[]>([]); const [loaded, setLoaded] = useState(false); const [storageError, setStorageError] = useState(""); const [notice, setNotice] = useState("");
@@ -89,7 +89,7 @@ export default function PrizePicksWorkspace() {
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
     setLoading(true); setFeedMessage(""); setBoard(null);
     try {
-      const r = await fetch(`${API_BASE}/api/prizepicks/board?sport=${encodeURIComponent(sport)}`, { headers: { "X-PrizePicks-Access-Token": token }, signal: controller.signal, cache: "no-store" });
+      const r = await fetch(`${API_BASE}/api/prizepicks/board?sport=${encodeURIComponent(sport)}`, { signal: controller.signal, cache: "no-store" });
       const data = await r.json() as PicksBoard;
       if (controller.signal.aborted) return;
       if (!r.ok) throw new Error(data.message || "The board could not be loaded.");
@@ -97,7 +97,7 @@ export default function PrizePicksWorkspace() {
       setBoard(data); setNow(Date.now());
     } catch (e) { if (!controller.signal.aborted) setFeedMessage(e instanceof Error ? e.message : "The sports feed is unavailable."); }
     finally { if (request.current === controller) setLoading(false); }
-  }, [sport, token]);
+  }, [sport]);
   const ranked = rankBoard(board, now);
   const visible = ranked.filter(p => `${p.player} ${STATS[p.stat]} ${p.matchup}`.toLowerCase().includes(query.toLowerCase()));
   const analysis = entryAnalysis(picks, now);
@@ -120,13 +120,12 @@ export default function PrizePicksWorkspace() {
       <div className="min-w-0 grid gap-3">
         <section className="panel rounded-lg p-4 sm:p-5" aria-labelledby="daily-picks-heading">
           <div className="flex flex-wrap gap-3 items-center justify-between"><div><h2 className="text-xl font-semibold" id="daily-picks-heading">Today’s strongest comparisons</h2><p className="text-ink-2 mt-1">Ranked by estimated hit chance among supported, upcoming lines.</p></div><a className="control-button" href="#custom-pick" onClick={e => { e.preventDefault(); document.getElementById("custom-pick")?.scrollIntoView({ block: "start", behavior: "smooth" }); }}>Check my own pick ↓</a></div>
-          {configured === false && <div className="rounded-lg bg-ground border border-line-strong p-4 my-4"><h3 className="font-semibold">Connect the daily sports feed</h3><p className="text-ink-2 mt-2">Your server needs a The Odds API key with player props and PrizePicks coverage, plus a private feed access code. Your custom pick analyzer below works now.</p><a className="text-accent underline inline-block mt-2" href="https://github.com/ethanhockey1211-lgtm/Crypto-insane-/blob/claude/crypto-trading-scanner-ymspes/docs/prizepicks-tracker.md" target="_blank" rel="noopener noreferrer">Feed setup instructions ↗</a></div>}
+          {configured === false && <div className="rounded-lg bg-ground border border-line-strong p-4 my-4"><h3 className="font-semibold">Connect the daily sports feed</h3><p className="text-ink-2 mt-2">Your server needs a The Odds API key with player props and PrizePicks coverage. Your custom pick analyzer below works now.</p><a className="text-accent underline inline-block mt-2" href="https://github.com/ethanhockey1211-lgtm/Crypto-insane-/blob/claude/crypto-trading-scanner-ymspes/docs/prizepicks-tracker.md" target="_blank" rel="noopener noreferrer">Feed setup instructions ↗</a></div>}
           <form className="flex flex-wrap items-end gap-3 mt-4" onSubmit={e => { e.preventDefault(); void refresh(); }}>
             <label>League<select className="field mt-1" value={sport} onChange={e => { request.current?.abort(); setSport(e.target.value); setBoard(null); setFeedMessage(""); setLoading(false); }}>{Object.entries(SPORTS).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
-            <label className="grow min-w-0">Feed access code<input className="field mt-1" type="password" autoComplete="off" maxLength={512} value={token} onChange={e => setToken(e.target.value)} placeholder="Private server access code" /></label>
-            <button type="submit" className="control-button" disabled={loading || !token.trim()}>{loading ? "Scanning games…" : "Refresh daily picks"}</button>
+            <button type="submit" className="control-button" disabled={loading}>{loading ? "Scanning games…" : "Refresh daily picks"}</button>
           </form>
-          <p className="text-ink-2 mt-3">Access code stays in memory. Scans share a two-minute server cache and use your provider quota. Quotes expire after five minutes.</p>
+          <p className="text-ink-2 mt-3">Scans share a two-minute server cache and use your provider quota. Quotes expire after five minutes.</p>
           {feedMessage && <p role="alert" className="text-warn mt-3">{feedMessage}</p>}
           {board && <p role="status" className="text-ink-2 mt-3">{board.message} Last scan {new Date(board.asOf).toLocaleTimeString()} · {board.eventsScanned}/{board.eventsAvailable} events.</p>}
           {ranked.length > 0 && <label className="block mt-4">Find a player or stat<input className="field mt-1" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search comparisons" /></label>}
