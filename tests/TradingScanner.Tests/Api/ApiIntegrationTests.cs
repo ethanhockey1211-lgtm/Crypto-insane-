@@ -274,6 +274,7 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
         using var factory = new Factory();
         var client = await ClientAsync(factory);
         var received = new TaskCompletionSource<List<QuoteDto>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        long injectedAtMs = long.MaxValue;
         var connection = new HubConnectionBuilder()
             .WithUrl(new Uri(client.BaseAddress!, "/hubs/market"), o =>
             {
@@ -281,7 +282,13 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
                 o.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.LongPolling; // TestServer has no real socket
             })
             .Build();
-        connection.On<List<QuoteDto>>("quotes", q => received.TrySetResult(q));
+        connection.On<List<QuoteDto>>("quotes", q =>
+        {
+            // The provider's startup quote may be delivered after subscribing. Correlate
+            // the batch to our injected trade before asserting its price and provenance.
+            if (q.Any(quote => quote.Symbol == "BTC-USD" && quote.ExchangeTimeMs == Interlocked.Read(ref injectedAtMs)))
+                received.TrySetResult(q);
+        });
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await connection.StartAsync(timeout.Token);
         try
@@ -290,6 +297,7 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
             // Inject a fresh trade through the engine by way of the provider's output channel: simplest is a new quote via the engine's channel.
             var channel = factory.Services.GetRequiredService<TradingScanner.MarketData.Engine.MarketEventChannel>();
             var now = DateTimeOffset.UtcNow;
+            Interlocked.Exchange(ref injectedAtMs, now.ToUnixTimeMilliseconds());
             await channel.Writer.WriteAsync(MarketEvent.FromTrade(new Trade(new Symbol("BTC-USD"), "fake", "Fake Exchange", 999, 50123m, 0.5m, TradeSide.Buy, now, now)));
 
             var batch = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
