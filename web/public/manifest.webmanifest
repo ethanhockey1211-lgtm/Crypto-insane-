@@ -1,0 +1,20 @@
+{
+  "id": "/app/",
+  "name": "Stillwatch — Crypto Market Monitoring",
+  "short_name": "Stillwatch",
+  "description": "Monitor crypto markets without staring at charts all day.",
+  "start_url": "/app/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#101513",
+  "theme_color": "#101513",
+  "lang": "en",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "My watchlist", "url": "/app/?tab=watchlist" },
+    { "name": "Alert history", "url": "/app/?tab=alerts" }
+  ]
+}

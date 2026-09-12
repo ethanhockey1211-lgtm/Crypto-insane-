@@ -13,9 +13,28 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health/live
+    # Customer database and Identity keys must survive replacement/redeploy. One app instance only.
+    disk:
+      name: stillwatch-product-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
+      - key: Product__CommercialMode
+        value: "true"
+      - key: Product__MarketDataApproved
+        value: "false"
+      - key: Product__DatabasePath
+        value: /var/data/product.db
+      - key: Product__DataProtectionKeysPath
+        value: /var/data/keys
+      - key: Product__PublicOrigin
+        sync: false
+      - key: Product__Billing__Enabled
+        value: "false"
+      - key: Product__Push__Enabled
+        value: "false"
       - key: ConnectionStrings__Postgres
         fromDatabase:
           name: tradingscanner-db
