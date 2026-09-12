@@ -8,11 +8,14 @@ The product was built and checked locally. It has not been publicly deployed, co
 - Frontend: **337 passed**, 18 test files (`corepack pnpm test`). TypeScript checking passed.
 - `NEXT_OUTPUT=export corepack pnpm build` passed. The exported site was copied into a published .NET API and exercised on one origin.
 - Real Edge browser smoke: **17 passed, 0 failed**, including both temporary-account cleanup checks. Desktop and 360/390 px phone layouts had no horizontal overflow. Screenshots were inspected.
+- A separate explicitly seeded local Pro browser fixture passed **8 checks**: rule creation/editing, pause/resume, deletion, score-floor validation, customer isolation and launch restrictions. It bypasses payments only in the named local test database and is **not payment verification**. Both fixture customers were deleted.
 - Static landing, app, legal, offline, manifest, service worker and icon routes returned successfully through the published API, including an account URL with query parameters.
 
 ## What the checks prove
 
 The browser pass created local test accounts, completed onboarding with an IANA time zone and cost assumptions, saved canonical watchlist symbols, signed in from another browser context, checked customer isolation, saved a support receipt, tested logout and modal keyboard focus, and verified that a checkout-return URL cannot unlock Pro. It inspected the service-worker cache and rendered the offline explanation with the device offline. Temporary accounts were deleted after the run.
+
+Reusable scripts are `web/scripts/product-smoke.mjs` and `web/scripts/product-pro-smoke.mjs`. Read their explicit local-host/configuration requirements before running them. The optional seeded fixture requires Node 24 and opt-in; the application itself does not depend on it.
 
 Backend tests cover password recovery and session invalidation, ownership and limits, signed/duplicate/out-of-order payment events, purchase/failed-payment/cancellation/expiry entitlements, rule matching and inherited conditions, quiet hours and time zones, cooldown/hold state, stale-data suppression, durable delivery retries and immutable issue-time evidence. A Web Push test decrypts the actual locally generated encrypted payload to verify that private rules, symbols and prices are absent from lock-screen text. History deep links enforce ownership and the configured access window.
 
