@@ -13,8 +13,11 @@ using TradingScanner.MarketData;
 using TradingScanner.Signals;
 using TradingScanner.Api.Stocks;
 using TradingScanner.Api.PrizePicks;
+using TradingScanner.Api.Product;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddProductAccounts(builder.Configuration, builder.Environment);
+builder.Services.AddProductAlerts(builder.Configuration);
 
 // PaaS convention (Render, Heroku, Fly): bind to the injected PORT when present.
 if (Environment.GetEnvironmentVariable("PORT") is { Length: > 0 } port && int.TryParse(port, out var portNumber))
@@ -27,6 +30,14 @@ if (!builder.Environment.IsDevelopment())
 }
 
 builder.Services.AddMarketData(builder.Configuration);
+// Keep the real adapters intact, but do not consume exchange data for an unapproved commercial
+// preview. The illustrative UI has no market feed and cannot produce customer signals.
+if (builder.Configuration.GetValue("Product:CommercialMode", true) && !builder.Configuration.GetValue<bool>("Product:MarketDataApproved"))
+{
+    var feedWorker = builder.Services.FirstOrDefault(service => service.ServiceType == typeof(IHostedService)
+        && service.ImplementationType == typeof(TradingScanner.MarketData.Engine.MarketDataOrchestrator));
+    if (feedWorker is not null) builder.Services.Remove(feedWorker);
+}
 builder.Services.AddAnalytics(builder.Configuration);
 builder.Services.AddPostgresPersistence(builder.Configuration); // before AddSignals: replaces the in-memory stores when configured
 builder.Services.AddSingleton(builder.Configuration.HasPostgres() ? PersistenceInfo.Postgres : PersistenceInfo.Memory);
@@ -61,6 +72,9 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(origins).All
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy("product-auth", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.Connection.RemoteIpAddress?.ToString() ?? "anon",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     o.AddPolicy("api", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ctx.Connection.RemoteIpAddress?.ToString() ?? "anon",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 600, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
@@ -70,6 +84,7 @@ builder.Services.AddHealthChecks()
     .AddCheck<FeedHealthCheck>("feed", tags: ["ready"]);
 
 var app = builder.Build();
+await app.InitializeProductDatabaseAsync();
 app.Services.GetRequiredService<SignalsEngine>(); // subscribe to analytics before the first bar closes
 
 // The dashboard (web/, built with NEXT_OUTPUT=export) is served from wwwroot when present, so the API's own
@@ -86,6 +101,9 @@ if (hasDashboard)
 app.UseRouting();
 app.UseCors();
 app.UseRateLimiter();
+app.UseAuthentication();
+app.UseProductProtection();
+app.UseAuthorization();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
@@ -103,6 +121,11 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 
 app.MapMarketEndpoints();
+app.MapProductAccountEndpoints();
+app.MapProductBillingEndpoints();
+app.MapProductMarketEndpoints();
+app.MapProductAlertEndpoints();
+app.MapProductSupportEndpoints();
 app.MapAlertEndpoints();
 app.MapPaperEndpoints();
 app.MapPerformanceEndpoints();

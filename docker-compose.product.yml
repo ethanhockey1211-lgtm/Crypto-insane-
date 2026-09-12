@@ -1,0 +1,18 @@
+# Local product preview only. Public deployment requires HTTPS and Production cookie settings.
+services:
+  stillwatch:
+    build: .
+    ports:
+      - "5080:5080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Product__CommercialMode: "true"
+      Product__MarketDataApproved: "false"
+      Product__PublicOrigin: http://localhost:5080
+      Product__DatabasePath: /app/data/product.db
+      Product__DataProtectionKeysPath: /app/data/keys
+    volumes:
+      - product-data:/app/data
+    restart: unless-stopped
+volumes:
+  product-data:

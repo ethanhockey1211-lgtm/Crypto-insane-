@@ -7,3 +7,12 @@ web/mock
 tests
 docs
 .git
+**/data
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/.env
+**/.env.*
+!**/.env.example
+web/test-results
+web/playwright-report

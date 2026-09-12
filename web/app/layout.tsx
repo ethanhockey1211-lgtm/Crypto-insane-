@@ -1,21 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
-
-const plexSans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-plex-sans", display: "swap" });
-const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono", display: "swap" });
-
+import "./product.css";
 export const metadata: Metadata = {
-  title: "TradingScanner",
-  description: "Kraken crypto scanner and US stock research workspace with charts, watchlists, risk planning and a trading journal.",
+  title: { default: "Stillwatch — Keep perspective. Stay informed.", template: "%s · Stillwatch" },
+  description: "Monitor crypto markets without staring at charts all day. Understand market conditions, build your watchlist, and receive considered alerts.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Stillwatch" },
+  icons: { icon: "/icon.svg", apple: "/icon-192.png" },
 };
-
-export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#07090d" };
-
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#101513" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
-      <body>{children}</body>
-    </html>
-  );
+  return <html lang="en"><body>{children}</body></html>;
 }

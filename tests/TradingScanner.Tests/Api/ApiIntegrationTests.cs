@@ -29,6 +29,8 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
         public FeedStatus Status { get; private set; }
         public IReadOnlySet<Timeframe> HistoricalTimeframes { get; } = new HashSet<Timeframe>();
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TimeProvider Time { get; set; } = TimeProvider.System;
+        public int FirstTradeMinuteOffset { get; set; } = -3;
 
         public Task<IReadOnlyList<ProductInfo>> GetProductsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<ProductInfo>>(
         [
@@ -44,10 +46,10 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
         public async Task RunAsync(IReadOnlyCollection<Symbol> symbols, ChannelWriter<MarketEvent> output, CancellationToken ct)
         {
             Status = FeedStatus.Connected;
-            var now = DateTimeOffset.UtcNow;
+            var now = Time.GetUtcNow();
             await output.WriteAsync(MarketEvent.FromStatus(new FeedStatusChange(Name, 0, FeedStatus.Connected, null, now)), ct);
             var id = 1L;
-            foreach (var minute in Enumerable.Range(-3, 3))
+            foreach (var minute in Enumerable.Range(FirstTradeMinuteOffset, 3))
             {
                 var t = now.AddMinutes(minute);
                 await output.WriteAsync(MarketEvent.FromTrade(new Trade(new Symbol("BTC-USD"), Name, Exchange, id++, 50000m + minute, 0.1m, TradeSide.Buy, t, t)), ct);
@@ -68,6 +70,9 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
+            builder.UseSetting("Product:CommercialMode", "false");
+            builder.UseSetting("Product:MarketDataApproved", "true");
+            builder.UseSetting("Product:DatabasePath", Path.Combine(Path.GetTempPath(), "scanner-tests-" + Guid.NewGuid().ToString("N") + ".db"));
             builder.UseSetting("MarketData:WarmUpHistory", "false");
             builder.UseSetting("MarketData:IncludeAllPairs", "false");
             builder.UseSetting("MarketData:UniverseSize", "2");
@@ -90,6 +95,27 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
         {
             base.ConfigureWebHost(builder);
             builder.UseSetting("MarketData:IncludeAllPairs", "true");
+        }
+    }
+
+    private sealed class FrozenCandleTime : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(2026, 9, 12, 12, 2, 30, TimeSpan.Zero);
+    }
+
+    private sealed class CandleFactory : Factory
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            var clock = new FrozenCandleTime();
+            Provider.Time = clock;
+            Provider.FirstTradeMinuteOffset = -2; // Two completed minutes and the current forming minute.
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<TimeProvider>();
+                services.AddSingleton<TimeProvider>(clock);
+            });
         }
     }
 
@@ -125,10 +151,10 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
             return;
         }
         Assert.NotNull(feed.MarketAccess);
-        Assert.Equal("US", feed.MarketAccess.CountryCode);
-        Assert.Equal("Minnesota", feed.MarketAccess.Region);
-        Assert.Equal("Kraken app · Buy & Sell", feed.MarketAccess.TradingVenue);
-        Assert.Equal(["KAS", "NPC", "RE"], feed.MarketAccess.ExcludedAssets);
+        Assert.Equal("", feed.MarketAccess.CountryCode);
+        Assert.Equal("", feed.MarketAccess.Region);
+        Assert.Equal("Public spot market listings", feed.MarketAccess.TradingVenue);
+        Assert.Empty(feed.MarketAccess.ExcludedAssets);
     }
 
     [Fact]
@@ -181,12 +207,18 @@ public class ApiIntegrationTests : IClassFixture<ApiIntegrationTests.Factory>
     [Fact]
     public async Task Candles_endpoint_returns_closed_and_forming_bars()
     {
-        var client = await ClientAsync();
+        // Own frozen timeline: the engine's background clock otherwise closes the last historical
+        // fixture bar after one second, making the shared-fixture count depend on test scheduling.
+        using var factory = new CandleFactory();
+        using var client = await ClientAsync(factory);
         var resp = await client.GetFromJsonAsync<CandlesResponse>("/api/market/ETH-USD/candles?tf=1m&limit=10");
         Assert.NotNull(resp);
         Assert.Equal("1m", resp.Timeframe);
-        Assert.Equal(2, resp.Candles.Length); // minutes -3 and -2 closed; -1 forming
+        Assert.Equal(2, resp.Candles.Length);
         Assert.NotNull(resp.Forming);
+        Assert.Equal(2998m, resp.Candles[0].C);
+        Assert.Equal(2999m, resp.Candles[1].C);
+        Assert.Equal(3000m, resp.Forming.C);
         Assert.Equal("live", resp.Candles[0].Src);
 
         var bad = await client.GetAsync("/api/market/ETH-USD/candles?tf=2m");

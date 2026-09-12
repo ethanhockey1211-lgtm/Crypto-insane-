@@ -6,7 +6,8 @@
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Customer quiet hours accept browser IANA time zones and must respect daylight-saving time. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 </Project>
